@@ -595,7 +595,7 @@ def test_every_model_generates_json_schema() -> None:
         for obj in (getattr(models, name) for name in models.__all__)
         if isinstance(obj, type) and issubclass(obj, BaseModel)
     ]
-    assert len(model_classes) == 33  # 31 blueprint models + FrozenModel + StrictModel
+    assert len(model_classes) == 34  # 31 blueprint models + FrozenModel/StrictModel + EpisodeConfig
     for cls in model_classes:
         schema = cls.model_json_schema()
         assert schema.get("additionalProperties") is False, cls.__name__
