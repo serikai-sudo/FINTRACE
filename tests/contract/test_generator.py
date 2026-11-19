@@ -25,6 +25,7 @@ def default_episode() -> PrivateEpisode:
     return build_clean_episode(seed=42)
 
 
+@pytest.mark.slow
 def test_build_clean_passes_validation_1000_seeds() -> None:
     config = EpisodeConfig()
     docs_lo, docs_hi = config.n_documents_range
@@ -174,6 +175,7 @@ def test_foreign_currency_handled(default_episode: PrivateEpisode) -> None:
     assert checked >= 1
 
 
+@pytest.mark.slow
 def test_benford_passes_95_of_100_seeds() -> None:
     passing = 0
     for seed in range(BENFORD_SEEDS):

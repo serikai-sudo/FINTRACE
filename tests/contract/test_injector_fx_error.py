@@ -171,6 +171,7 @@ def test_double_entry_still_balanced_after_injection(clean: PrivateEpisode, vari
     assert {r.debit_minor + r.credit_minor for r in _rows(clean, entry.source_id)} == {policy_base}
 
 
+@pytest.mark.slow
 def test_200_seeds_build_and_validate() -> None:
     variants: Counter[str] = Counter()
     infeasible: list[int] = []
@@ -193,6 +194,7 @@ def test_200_seeds_build_and_validate() -> None:
     assert sum(variants.values()) == 199
 
 
+@pytest.mark.slow
 def test_wild_rate_never_used() -> None:
     irregular = 0
     for seed in range(50):
@@ -258,6 +260,7 @@ def test_relaxed_rows_keep_structural_checks(clean: PrivateEpisode, variant: str
         validate_clean_history(broken, ignore_ids=relaxed)
 
 
+@pytest.mark.slow
 def test_combined_config_infeasible_seeds_are_deterministic() -> None:
     """duplicate+payment+fx on seeds 0..199: the few seeds without a usable foreign payment fail
     loudly with InjectorError, always the same ones; every other seed builds and checks."""
@@ -282,6 +285,7 @@ def test_combined_config_infeasible_seeds_are_deterministic() -> None:
     assert infeasible == [40, 46, 145]  # two foreign payments consumed, or all below the floor
 
 
+@pytest.mark.slow
 def test_variant_distribution_uniform() -> None:
     variants: Counter[str] = Counter(
         str(build_episode(seed, _config(1)).provenance.injections[0].modified["variant"])

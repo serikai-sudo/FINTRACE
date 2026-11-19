@@ -185,6 +185,7 @@ def test_provenance_recorded() -> None:
     assert entry.modified["invoice_count"] == 2 and entry.original["invoice_count"] == 1
 
 
+@pytest.mark.slow
 def test_200_seeds_build_and_validate() -> None:
     clean_ids = set()
     for seed in range(200):

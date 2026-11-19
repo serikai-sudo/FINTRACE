@@ -113,6 +113,7 @@ def test_injector_preserves_double_entry_ledger(clean: PrivateEpisode, variant: 
     assert injected.public.fx == clean.public.fx and injected.public.policy == clean.public.policy
 
 
+@pytest.mark.slow
 def test_200_seeds_build_and_validate() -> None:
     variants: Counter[str] = Counter()
     for seed in range(200):
