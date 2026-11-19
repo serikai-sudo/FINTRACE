@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
@@ -64,8 +65,11 @@ def test_opaque_ids_not_sequential(default_episode: PrivateEpisode) -> None:
     public = default_episode.public
     n = len(public.invoices)
     in_time_order = [i.invoice_id for i in sorted(public.invoices, key=lambda i: i.issued_at)]
-    assert sorted(in_time_order) == [f"INV-{k:04d}" for k in range(1, n + 1)]  # same label set
-    assert in_time_order != sorted(in_time_order)  # ...but no longer in generation order
+    # labels come from a slightly larger range than needed (gaps camouflage injected records)
+    numbers = sorted(int(label.split("-")[1]) for label in in_time_order)
+    assert len(set(numbers)) == n and numbers[0] >= 1 and numbers[-1] <= n + 16
+    assert all(re.fullmatch(r"INV-[0-9]{4}", label) for label in in_time_order)
+    assert in_time_order != sorted(in_time_order)  # not in generation (time) order
     row_ids = [r.row_id for r in public.ledger]  # ledger is time-ordered
     assert row_ids != sorted(row_ids)
     journal_first_seen = list(dict.fromkeys(r.journal_id for r in public.ledger))

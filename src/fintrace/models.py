@@ -490,6 +490,33 @@ class StepResult(FrozenModel):
 # ---------------------------------------------------------------- generator configuration
 
 
+class InjectorParams(FrozenModel):
+    """Per-injector configuration shared by all four injector types."""
+
+    count: NonNegInt = Field(default=1, le=12)
+
+
+class ErrorInjectionConfig(FrozenModel):
+    """Episode-level injection plan; every count defaults to 0, i.e. a clean episode."""
+
+    duplicate_invoice: InjectorParams = Field(default_factory=lambda: InjectorParams(count=0))
+    payment_allocation: InjectorParams = Field(default_factory=lambda: InjectorParams(count=0))
+    fx_error: InjectorParams = Field(default_factory=lambda: InjectorParams(count=0))
+    period_misclassification: InjectorParams = Field(
+        default_factory=lambda: InjectorParams(count=0)
+    )
+
+    def total(self) -> int:
+        """Number of issues the plan injects."""
+        plans = (
+            self.duplicate_invoice,
+            self.payment_allocation,
+            self.fx_error,
+            self.period_misclassification,
+        )
+        return sum(params.count for params in plans)
+
+
 class EpisodeConfig(FrozenModel):
     """Configuration for generating one episode. Deterministic given (seed, config, VERSION)."""
 
@@ -506,6 +533,7 @@ class EpisodeConfig(FrozenModel):
     foreign_invoice_rate: Decimal = Field(
         default=Decimal("0.20"), ge=Decimal("0"), le=Decimal("0.6")
     )
+    errors: ErrorInjectionConfig = Field(default_factory=ErrorInjectionConfig)
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -537,11 +565,13 @@ __all__ = [
     "EpisodeConfig",
     "EpisodeState",
     "Error",
+    "ErrorInjectionConfig",
     "FXRate",
     "Finding",
     "FrozenModel",
     "GetDocumentArgs",
     "GetRecordArgs",
+    "InjectorParams",
     "Invoice",
     "InvoiceAllocation",
     "Issue",
