@@ -16,7 +16,7 @@ MAX_EVIDENCE_IDS_PER_FINDING: Final[int] = 10
 MAX_AFFECTED_IDS_PER_FINDING: Final[int] = 20
 MAX_EXPLANATION_CHARS: Final[int] = 1000
 MAX_CALCULATOR_EXPR_CHARS: Final[int] = 200
-MAX_ID_CHARS: Final[int] = 64  # any opaque identifier (row, document, invoice, payment, entity)
+MAX_ID_CHARS: Final[int] = 64  # any opaque identifier (row, document, invoice, payment, cursor)
 
 # ---------------------------------------------------------------- 3. Tolerance defaults
 DEFAULT_TOLERANCE_FRAC: Final[Decimal] = Decimal("0.001")  # 0.1 % relative tolerance on amounts
@@ -85,12 +85,19 @@ TABLE_NAMES: Final[tuple[TableName, ...]] = ("ledger", "invoices", "payments", "
 
 # ---------------------------------------------------------------- 10. Regex patterns
 # Used as Pydantic Field(pattern=...) / StringConstraints(pattern=...) in fintrace.models.
+# Pydantic applies patterns with search semantics, so every pattern is anchored with ^ and $.
+# ASCII classes ([0-9]) only: \d in the Rust regex engine also matches non-ASCII digits.
 OPAQUE_ID_PATTERN: Final[str] = r"^[A-Za-z0-9_\-:.]+$"
 CURRENCY_ISO4217_PATTERN: Final[str] = r"^[A-Z]{3}$"
+# Generator note: derive the id from a keyed/salted hash of the seed, never a bare hash prefix —
+# the id is public and a bare prefix of a small integer seed is brute-forceable.
 EPISODE_ID_PATTERN: Final[str] = r"^ep_[0-9a-f]{10,16}$"
-ISSUE_ID_PATTERN: Final[str] = r"^ISS-\d{2,4}$"
-# Fixed offset ("+05:00") or IANA zone name ("Asia/Almaty").
-TIMEZONE_PATTERN: Final[str] = r"^[+-]\d{2}:\d{2}$|^[A-Za-z_]+/[A-Za-z_]+$"
+ISSUE_ID_PATTERN: Final[str] = r"^ISS-[0-9]{2,4}$"
+# Fixed offset ("+05:00", hours 00-23, minutes 00-59), "UTC", or an IANA zone name
+# ("Asia/Almaty", "Etc/GMT+5", "America/Argentina/Buenos_Aires").
+TIMEZONE_PATTERN: Final[str] = (
+    r"^(?:[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]|UTC|[A-Za-z_]+(?:/[A-Za-z0-9_+\-]+)+)$"
+)
 
 # ---------------------------------------------------------------- 11. Reporting / observation
 REWARD_INTERMEDIATE: Final[float] = 0.0  # reward of every non-terminal step
