@@ -147,9 +147,9 @@ def test_match_ambiguous_prefers_max_tp() -> None:
     i0, i1, i2 = (
         _issue(issue_id=f"ISS-0{k}", expected_amount_minor=100000 + 100 * k) for k in (1, 2, 3)
     )
-    f0 = _finding(claimed_amount_minor=100050)  # within 100 of i0 (100100) and i1 (100200)
-    f1 = _finding(claimed_amount_minor=100250)  # within 100 of i1 and i2 (100300)
-    f2 = _finding(claimed_amount_minor=100350)  # i2 only
+    f0 = _finding(claimed_amount_minor=100150)  # 50 from i0 (100100) and i1 (100200)
+    f1 = _finding(claimed_amount_minor=100250)  # 50 from i1 and i2 (100300)
+    f2 = _finding(claimed_amount_minor=100350)  # i2 only (150 from i1)
     assert build_compat_matrix([f0, f1, f2], (i0, i1, i2)) == {0: [0, 1], 1: [1, 2], 2: [2]}
     for order in ([f0, f1, f2], [f2, f1, f0], [f1, f2, f0], [f0, f2, f1]):
         assert match(order, (i0, i1, i2)) == (3, 0, 0)
