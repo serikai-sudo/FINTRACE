@@ -1,20 +1,14 @@
-# TODO(step-6): integrate evaluator.matcher + reward.official.
-# Current behavior: accepts submission, returns 0.0 reward, terminates episode.
-"""submit: the terminal tool. Step-5 placeholder: validates the episode id and accepts.
+"""submit: the terminal tool. Validates the episode id and accepts the submission.
 
-The matcher and the official reward are injected by the environment in step 6 (dependency
-injection; this module never imports fintrace.evaluator). Until then every accepted submission
-earns ``SUBMIT_PLACEHOLDER_REWARD`` and the agent sees only ``{status, findings_count}``.
+Scoring happens in the environment, not here: the env hands an accepted ``Submission`` to the
+evaluator and the official reward (dependency injection), so this module never imports
+``fintrace.evaluator``. The agent sees only ``{status, findings_count}``.
 """
 
 from __future__ import annotations
 
-from typing import Final
-
 from fintrace.environment.observations import build_error_result, build_ok_result
 from fintrace.models import EpisodeState, JsonObject, PublicEpisode, Submission, ToolResult
-
-SUBMIT_PLACEHOLDER_REWARD: Final[float] = 0.0  # matcher pending (step 6)
 
 
 def handle_submit(args: Submission, state: EpisodeState, episode: PublicEpisode) -> ToolResult:
@@ -25,4 +19,4 @@ def handle_submit(args: Submission, state: EpisodeState, episode: PublicEpisode)
     return build_ok_result("submit", result, state)
 
 
-__all__ = ["SUBMIT_PLACEHOLDER_REWARD", "handle_submit"]
+__all__ = ["handle_submit"]
