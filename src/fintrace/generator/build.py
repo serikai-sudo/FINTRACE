@@ -39,6 +39,7 @@ from .history import generate_clean_history
 from .injectors.base import (
     INJECTOR_ORDER,
     InjectorError,
+    InjectorInfeasible,
     append_truth_and_provenance,
     inconsistent_ids,
 )
@@ -60,6 +61,12 @@ _MODULE_BY_KIND: Final[dict[IssueType, str]] = {
     "fx_error": "fx_error",
     "period_misclassification": "period",
 }
+# interacting scenarios (two linked issues each), applied after the single injectors
+_SCENARIO_FUNCS: Final[dict[str, str]] = {
+    "scenario_a": "inject_scenario_a",
+    "scenario_b": "inject_scenario_b",
+}
+_SCENARIO_MODULE: Final[str] = "fintrace.generator.injectors.interacting"
 _EPISODE_ID_HEX: Final[int] = 12
 _SEED_HASH_HEX: Final[int] = 16
 
@@ -100,9 +107,9 @@ def _derive_root_rng(seed: int, config: EpisodeConfig) -> random.Random:
 
 
 def _derive_injector_rng(
-    seed: int, config: EpisodeConfig, kind: IssueType, index: int, attempt: int
+    seed: int, config: EpisodeConfig, kind: str, index: int, attempt: int
 ) -> random.Random:
-    """Independent RNG per injection (type, ordinal, retry attempt)."""
+    """Independent RNG per injection (issue type or scenario name, ordinal, retry attempt)."""
     label = f"{_key_digest(seed, config)}:inject:{kind}:{index}:{attempt}"
     return random.Random(int(_sha256_hex(label), 16))
 
@@ -321,6 +328,43 @@ def _inject_with_retries(
     ) from last_error
 
 
+def _inject_scenario_with_retries(
+    private: PrivateEpisode, seed: int, config: EpisodeConfig, name: str, index: int
+) -> PrivateEpisode:
+    """Apply one interacting scenario (two linked issues) with the same retry discipline.
+
+    Both issues are appended, then the books are checked structurally (relaxed only where the
+    provenance says so) and each issue is verified by the ``independent_check`` of its own type:
+    a scenario issue is rediscoverable exactly like a single injection of that type.
+    """
+    module = _INJECTOR_MODULES.get("interacting")  # pseudo-kind key for the scenario module
+    if module is None:
+        module = importlib.import_module(_SCENARIO_MODULE)
+        _INJECTOR_MODULES["interacting"] = module
+    inject = getattr(module, _SCENARIO_FUNCS[name])
+    last_error: Exception | None = None
+    for attempt in range(INJECTOR_MAX_RETRY_ATTEMPTS):
+        rng = _derive_injector_rng(seed, config, f"interacting_{name}", index, attempt)
+        try:
+            # the shared injector signature carries params; a scenario's count lives in the
+            # config and is driven by this loop, so a unit value is passed
+            result, issues, entries = inject(private, rng, InjectorParams(count=1))
+            for issue, entry in zip(issues, entries, strict=True):
+                result = append_truth_and_provenance(result, issue, entry)
+            validate_clean_history(result, ignore_ids=inconsistent_ids(result))
+            for issue in issues:
+                _load_injector(issue.type).independent_check(result.public, issue)
+        except InjectorInfeasible as exc:  # no candidate at all: retries cannot help
+            raise InjectorError(f"{name} #{index} is infeasible for this seed: {exc}") from exc
+        except (ConsistencyError, InjectorError) as exc:
+            last_error = exc
+            continue
+        return result
+    raise InjectorError(
+        f"{name} #{index} failed after {INJECTOR_MAX_RETRY_ATTEMPTS} attempts"
+    ) from last_error
+
+
 def _reassign_episode_id(private: PrivateEpisode) -> PrivateEpisode:
     """Recompute the content-hash episode id after the public content changed."""
     episode_id = _episode_id(_public_content(private.public))
@@ -333,8 +377,8 @@ def _reassign_episode_id(private: PrivateEpisode) -> PrivateEpisode:
 def build_episode(seed: int, config: EpisodeConfig | None = None) -> PrivateEpisode:
     """Clean history, then the injectors of ``config.errors`` in fixed order, each checked.
 
-    Order: duplicate_invoice -> payment_allocation -> fx_error -> period_misclassification (the
-    order matters for interacting scenarios). Every injection must keep the books structurally
+    Order: duplicate_invoice -> payment_allocation -> fx_error -> period_misclassification, then
+    the interacting scenarios (A, B). Every injection must keep the books structurally
     consistent (``validate_clean_history``) and be rediscoverable from public data alone
     (``independent_check``); otherwise it is retried on a fresh sub-RNG and finally raises
     ``InjectorError``. With all counts at zero the result is exactly ``build_clean_episode``.
@@ -347,6 +391,9 @@ def build_episode(seed: int, config: EpisodeConfig | None = None) -> PrivateEpis
         params: InjectorParams = getattr(config.errors, kind)
         for index in range(params.count):
             private = _inject_with_retries(private, seed, config, kind, index, params)
+    for name in _SCENARIO_FUNCS:
+        for index in range(getattr(config.errors.interacting, name)):
+            private = _inject_scenario_with_retries(private, seed, config, name, index)
     # every issue must still be rediscoverable on the final books: a later injection is not
     # allowed to mask an earlier one (eligibility rules prevent it; this makes it a contract)
     for issue in private.truth.issues:

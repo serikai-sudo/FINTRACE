@@ -43,7 +43,9 @@ INJECTOR_ORDER: Final[tuple[IssueType, ...]] = (
 )
 # ops that modify an existing document in place; the structural checks skip that document
 # (duplicate_invoice only adds records, which stay under the full clean contract)
-SOURCE_MODIFYING_OPS: Final[frozenset[str]] = frozenset({"payment_allocation"})
+SOURCE_MODIFYING_OPS: Final[frozenset[str]] = frozenset(
+    {"payment_allocation", "interacting_scenario_a_partial"}
+)
 # ProvenanceEntry.modified key: ids of records (ledger rows) whose amount checks are relaxed
 RELAXED_IDS_KEY: Final[str] = "relaxed_ids"
 _ISSUE_ID_MODULUS: Final[int] = 10_000  # ISS-0000 .. ISS-9999 (frozen ISSUE_ID_PATTERN)
@@ -51,6 +53,10 @@ _ISSUE_ID_MODULUS: Final[int] = 10_000  # ISS-0000 .. ISS-9999 (frozen ISSUE_ID_
 
 class InjectorError(Exception):
     """An injection cannot be applied cleanly; build.py retries on a fresh sub-RNG, then raises."""
+
+
+class InjectorInfeasible(InjectorError):
+    """No candidate exists for this (seed, config); a retry cannot help, build.py fails fast."""
 
 
 class Injector(Protocol):
@@ -316,6 +322,7 @@ __all__ = [
     "SOURCE_MODIFYING_OPS",
     "Injector",
     "InjectorError",
+    "InjectorInfeasible",
     "append_truth_and_provenance",
     "derive_issue_id",
     "find_other_invoice_same_currency",
