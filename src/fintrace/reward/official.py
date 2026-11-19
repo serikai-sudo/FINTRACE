@@ -4,7 +4,7 @@
 
 ``inspection_steps`` = every step before the terminal one (invalid actions and failed submits
 included); for a truncated episode it is MAX_STEPS and F1 is that of an empty submission.
-This module depends on constants only: no matcher, no metrics, no experimental rewards.
+This module depends on constants only: no matcher, no metrics, no research reward variants.
 """
 
 from __future__ import annotations
