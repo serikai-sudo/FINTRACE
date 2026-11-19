@@ -202,13 +202,15 @@ def _payment_rows_ok(
     policy: Policy,
     base_currency: CurrencyCode,
     fx_index: FxIndex,
-    check_amount: bool = True,
+    relax_amount: bool = False,
+    relax_timestamp: bool = False,
 ) -> bool:
     """True if the payment journal matches the posting rule for ``side``.
 
-    With ``check_amount`` False (an injected FX error on this journal) the structure is still
-    required: two rows, the right accounts, base currency, timestamp, invoice and entity; only the
-    converted amount is left unchecked.
+    The structure is always required: two rows, the right accounts, the right currency, invoice
+    and entity. ``relax_amount`` (an injected wrong conversion) leaves the converted amount to the
+    injector's own check; ``relax_timestamp`` (an injected posting in the wrong period) does the
+    same for the posting date.
     """
     pair = _two_rows(rows)
     if pair is None:
@@ -226,14 +228,13 @@ def _payment_rows_ok(
     expected = ("AP", "CASH") if side == "supplier" else ("CASH", "AR")
     structure_ok = all(
         row.currency == currency
-        and row.timestamp == payment.timestamp
         and row.invoice_id == invoice.invoice_id
         and row.entity_id == invoice.entity_id
         for row in pair
     ) and (debit.account, credit.account) == expected
-    if not check_amount:
-        return structure_ok
-    return structure_ok and debit.debit_minor == amount and credit.credit_minor == amount
+    timestamp_ok = relax_timestamp or all(row.timestamp == payment.timestamp for row in pair)
+    amount_ok = relax_amount or (debit.debit_minor == amount and credit.credit_minor == amount)
+    return structure_ok and timestamp_ok and amount_ok
 
 
 def check_ledger_matches_documents(
@@ -249,9 +250,11 @@ def check_ledger_matches_documents(
 
     Misc (document-less) rows: never AP/AR, base currency only, EXPENSE/CASH/REVENUE only, and
     an entity_id, if present, belongs to a counterparty that has an invoice in the episode.
-    The journal check is skipped for payments in ``ignore_ids`` (injected allocation errors);
-    their ledger rows still have to reference existing documents. A payment journal whose rows
-    are in ``ignore_ids`` (injected FX error) keeps its structural check but not the amount one.
+    A payment in ``ignore_ids`` carries an injected allocation error, so its journal is checked
+    against the invoice its rows book rather than the one its (broken) allocation names. A payment
+    journal whose rows are in ``ignore_ids`` keeps its structural check; its converted amount is
+    left to the injector (FX error), and its posting date too when the payment document was
+    rewritten as well (a scenario that re-posts an under-allocated payment).
     """
     invoice_by_id = {invoice.invoice_id: invoice for invoice in invoices}
     payment_by_id = {payment.payment_id: payment for payment in payments}
@@ -302,13 +305,16 @@ def check_ledger_matches_documents(
     fx_index = build_fx_index(fx_rates)
     bad_payments: list[str] = []
     for payment in payments:
-        if payment.payment_id in ignore_ids:
-            continue
-        first_ref = payment.invoice_refs[0].invoice_id if payment.invoice_refs else None
-        invoice = invoice_by_id.get(first_ref) if first_ref is not None else None
         rows = rows_by_payment.get(payment.payment_id, [])
-        # relaxed only when the whole journal was rewritten (an FX error touches both rows)
-        check_amount = not (rows and all(row.row_id in ignore_ids for row in rows))
+        document_relaxed = payment.payment_id in ignore_ids
+        if document_relaxed:  # broken allocation: the journal is judged by the invoice it books
+            booked = sorted({row.invoice_id for row in rows if row.invoice_id is not None})
+            invoice = invoice_by_id.get(booked[0]) if len(booked) == 1 else None
+        else:
+            first_ref = payment.invoice_refs[0].invoice_id if payment.invoice_refs else None
+            invoice = invoice_by_id.get(first_ref) if first_ref is not None else None
+        # relaxed only when the whole journal was rewritten (an injected error touches both rows)
+        rows_relaxed = bool(rows) and all(row.row_id in ignore_ids for row in rows)
         if invoice is None or not _payment_rows_ok(
             payment,
             rows,
@@ -317,7 +323,8 @@ def check_ledger_matches_documents(
             policy,
             base_currency,
             fx_index,
-            check_amount,
+            relax_amount=rows_relaxed,
+            relax_timestamp=rows_relaxed and document_relaxed,
         ):
             bad_payments.append(payment.payment_id)
     if bad_payments:

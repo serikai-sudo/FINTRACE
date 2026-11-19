@@ -496,6 +496,13 @@ class InjectorParams(FrozenModel):
     count: NonNegInt = Field(default=1, le=12)
 
 
+class InteractingScenarioParams(FrozenModel):
+    """Interacting scenarios (two causally linked issues each); every count defaults to 0."""
+
+    scenario_a: NonNegInt = Field(default=0, le=5)  # partial foreign payment + period cut-off
+    scenario_b: NonNegInt = Field(default=0, le=5)  # duplicate foreign invoice + FX on its payment
+
+
 class ErrorInjectionConfig(FrozenModel):
     """Episode-level injection plan; every count defaults to 0, i.e. a clean episode."""
 
@@ -505,16 +512,18 @@ class ErrorInjectionConfig(FrozenModel):
     period_misclassification: InjectorParams = Field(
         default_factory=lambda: InjectorParams(count=0)
     )
+    interacting: InteractingScenarioParams = Field(default_factory=InteractingScenarioParams)
 
     def total(self) -> int:
-        """Number of issues the plan injects."""
+        """Number of issues the plan injects (an interacting scenario yields two)."""
         plans = (
             self.duplicate_invoice,
             self.payment_allocation,
             self.fx_error,
             self.period_misclassification,
         )
-        return sum(params.count for params in plans)
+        scenarios = self.interacting.scenario_a + self.interacting.scenario_b
+        return sum(params.count for params in plans) + 2 * scenarios
 
 
 class EpisodeConfig(FrozenModel):
@@ -572,6 +581,7 @@ __all__ = [
     "GetDocumentArgs",
     "GetRecordArgs",
     "InjectorParams",
+    "InteractingScenarioParams",
     "Invoice",
     "InvoiceAllocation",
     "Issue",

@@ -29,7 +29,7 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta, tzinfo
-from typing import Final, Literal
+from typing import Final, Literal, TypeAlias
 from zoneinfo import ZoneInfo
 
 from fintrace.generator.company import fixed_offset
@@ -277,42 +277,65 @@ def inject(episode: PrivateEpisode, rng: random.Random, params: InjectorParams) 
     return _inject_variant(episode, rng, variant)
 
 
+_Document: TypeAlias = tuple[str, int, str, list[LedgerRow]]  # (date, amount, currency, journal)
+
+
+def _document_and_journal(public: PublicEpisode, affected: set[str]) -> _Document:
+    """The one invoice or payment named in ``affected`` together with its two-row journal.
+
+    An invoice owns the rows that carry its id and no payment id; a payment owns the rows that
+    carry its payment id (the interacting scenario A re-posts a payment journal).
+    """
+    invoices = [i for i in public.invoices if i.invoice_id in affected]
+    payments = [p for p in public.payments if p.payment_id in affected]
+    if len(invoices) + len(payments) != 1:
+        raise ConsistencyError(_CHECK, "affected_ids must name one document", sorted(affected))
+    if invoices:
+        invoice = invoices[0]
+        doc_id, date, amount, currency = (
+            invoice.invoice_id, invoice.issued_at, invoice.total_minor, invoice.currency,
+        )  # fmt: skip
+        owns = [r for r in public.ledger if r.invoice_id == doc_id and r.payment_id is None]
+    else:
+        payment = payments[0]
+        doc_id, date, amount, currency = (
+            payment.payment_id, payment.timestamp, payment.amount_minor, payment.currency,
+        )  # fmt: skip
+        owns = [r for r in public.ledger if r.payment_id == doc_id]
+    others = sorted(affected - {doc_id})
+    if len(others) != 1:
+        raise ConsistencyError(_CHECK, "affected_ids must name a document and its journal", others)
+    rows = sorted((r for r in owns if r.journal_id == others[0]), key=lambda r: r.row_id)
+    all_rows = [r for r in public.ledger if r.journal_id == others[0]]
+    if len(rows) != 2 or len(all_rows) != 2:
+        raise ConsistencyError(_CHECK, "journal is not the document's two-row posting", others)
+    return date, amount, currency, rows
+
+
 def independent_check(public: PublicEpisode, issue: Issue) -> None:
     """Rediscover the cut-off error from public files alone.
 
-    ``affected_ids`` names one invoice and its journal; the journal must be the invoice's two-row
-    posting; the document (per ``assignment_field``) and the posting must fall in different
-    periods when evaluated in the policy timezone; expected amount and currency are the invoice's.
+    ``affected_ids`` names one document (invoice or payment) and its journal; the journal must
+    be that document's two-row posting; the document date (per ``assignment_field``) and the
+    posting must fall in different periods when evaluated in the policy timezone; expected amount
+    and currency are the document's.
     """
-    affected = set(issue.affected_ids)
-    invoices = [i for i in public.invoices if i.invoice_id in affected]
-    if len(invoices) != 1:
-        raise ConsistencyError(_CHECK, "affected_ids must name one invoice", sorted(affected))
-    invoice = invoices[0]
-    others = sorted(affected - {invoice.invoice_id})
-    if len(others) != 1:
-        raise ConsistencyError(_CHECK, "affected_ids must name the invoice and its journal", others)
-    journal_id = others[0]
-    rows = sorted((r for r in public.ledger if r.journal_id == journal_id), key=lambda r: r.row_id)
+    document_date, amount, currency, rows = _document_and_journal(public, set(issue.affected_ids))
     row_ids = [row.row_id for row in rows]
-    if len(rows) != 2 or any(
-        row.invoice_id != invoice.invoice_id or row.payment_id is not None for row in rows
-    ):
-        raise ConsistencyError(_CHECK, "journal is not the invoice's two-row posting", row_ids)
     if len({row.timestamp for row in rows}) != 1:
         raise ConsistencyError(_CHECK, "journal rows carry different timestamps", row_ids)
     start, end, tz = _period_bounds(public)
     rules = public.policy.period
-    document_ts = invoice.issued_at if rules.assignment_field == "issued_at" else rows[0].timestamp
+    document_ts = document_date if rules.assignment_field == "issued_at" else rows[0].timestamp
     document_inside = _inside(document_ts, start, end, tz, rules)
     posting_inside = _inside(rows[0].timestamp, start, end, tz, rules)
     if document_inside == posting_inside:
         raise ConsistencyError(_CHECK, "document and posting fall in the same period", row_ids)
-    if invoice.currency != issue.currency:
-        raise ConsistencyError(_CHECK, "finding currency must be the invoice currency")
-    if invoice.total_minor != issue.expected_amount_minor:
+    if currency != issue.currency:
+        raise ConsistencyError(_CHECK, "finding currency must be the document currency")
+    if amount != issue.expected_amount_minor:
         raise ConsistencyError(
-            _CHECK, f"invoice total {invoice.total_minor} != truth {issue.expected_amount_minor}"
+            _CHECK, f"document amount {amount} != truth {issue.expected_amount_minor}"
         )
 
 

@@ -597,7 +597,7 @@ def test_every_model_generates_json_schema() -> None:
     ]
     # 31 blueprint models + FrozenModel/StrictModel + 3 config models
     # (EpisodeConfig, InjectorParams, ErrorInjectionConfig)
-    assert len(model_classes) == 36
+    assert len(model_classes) == 37  # + InteractingScenarioParams
     for cls in model_classes:
         schema = cls.model_json_schema()
         assert schema.get("additionalProperties") is False, cls.__name__
