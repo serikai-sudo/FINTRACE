@@ -26,15 +26,18 @@ def default_episode() -> PrivateEpisode:
 
 def test_build_clean_passes_validation_1000_seeds() -> None:
     config = EpisodeConfig()
+    docs_lo, docs_hi = config.n_documents_range
     started = time.monotonic()
     for seed in range(SWEEP_SEEDS):
         episode = build_clean_episode(seed=seed, config=config)
         validate_clean_history(episode)
-        n_rows = len(episode.public.ledger)
-        assert MIN_LEDGER_ROWS <= n_rows <= MAX_LEDGER_ROWS + 2, seed  # +2: odd misc fill-up
+        public = episode.public
+        assert MIN_LEDGER_ROWS <= len(public.ledger) <= MAX_LEDGER_ROWS, seed
+        assert docs_lo <= public.manifest.n_documents <= docs_hi, seed
         assert episode.truth.issues == () and episode.provenance.injections == ()
     elapsed = time.monotonic() - started
-    assert elapsed < 60.0, f"{SWEEP_SEEDS} seeds took {elapsed:.1f}s"
+    # ~35 s on the dev box (2 CPU); the bound is 2x that so a slower CI runner stays green
+    assert elapsed < 120.0, f"{SWEEP_SEEDS} seeds took {elapsed:.1f}s"
 
 
 def test_deterministic_regeneration(default_episode: PrivateEpisode) -> None:
@@ -111,18 +114,23 @@ def test_fx_rates_cover_period(default_episode: PrivateEpisode) -> None:
 
 def test_recurring_supplier_present(default_episode: PrivateEpisode) -> None:
     public = default_episode.public
-    groups: dict[tuple[str, int, str], list[str]] = defaultdict(list)
+    groups: dict[tuple[str, int, str], list[tuple[str, str]]] = defaultdict(list)
     for invoice in public.invoices:
-        groups[(invoice.entity_id, invoice.total_minor, invoice.currency)].append(invoice.issued_at)
+        key = (invoice.entity_id, invoice.total_minor, invoice.currency)
+        groups[key].append((invoice.issued_at, invoice.line_items[0].desc))
     series = [sorted(v) for v in groups.values() if len(v) >= 3]
     recurring_invoices = sum(len(s) for s in series)
     assert recurring_invoices >= EpisodeConfig().recurring_supplier_count
-    for issued in series:
+    for entries in series:
+        issued = [issued_at for issued_at, _ in entries]
         gaps = [
             (datetime.fromisoformat(b) - datetime.fromisoformat(a)).days
             for a, b in pairwise(issued)
         ]
-        assert all(25 <= g <= 35 for g in gaps), gaps  # ~monthly
+        assert all(29 <= g <= 31 for g in gaps), gaps  # monthly, 30-day spacing
+        descs = [desc for _, desc in entries]
+        assert len(set(descs)) == len(descs)  # "<service> - YYYY-MM": one label per month
+        assert all(" - " in d and d[-7:-3].isdigit() for d in descs), descs
 
 
 def test_split_payments_present(default_episode: PrivateEpisode) -> None:

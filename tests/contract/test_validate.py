@@ -178,3 +178,15 @@ def test_validate_clean_history_orchestrator(episode: PrivateEpisode) -> None:
     with pytest.raises(ConsistencyError) as caught:
         validate_clean_history(truncated)
     assert caught.value.check_name == "manifest"
+    duplicate = public.ledger[0].model_copy(update={"row_id": public.ledger[1].row_id})
+    duplicated = public.model_copy(update={"ledger": (duplicate, *public.ledger[1:])})
+    with pytest.raises(ConsistencyError) as caught:
+        validate_clean_history(duplicated)
+    assert caught.value.check_name == "unique_ids"
+    misc_index = next(
+        k for k, r in enumerate(public.ledger) if r.invoice_id is None and r.payment_id is None
+    )
+    foreign_misc_ledger = _with_row(public, misc_index, currency="EUR")
+    with pytest.raises(ConsistencyError) as caught:
+        validate_clean_history(public.model_copy(update={"ledger": foreign_misc_ledger}))
+    assert caught.value.check_name in ("balanced", "ledger_matches_documents")

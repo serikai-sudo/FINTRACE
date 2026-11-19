@@ -491,10 +491,10 @@ class StepResult(FrozenModel):
 class EpisodeConfig(FrozenModel):
     """Configuration for generating one episode. Deterministic given (seed, config, VERSION)."""
 
-    schema_version: str = SCHEMA_VERSION
-    n_ledger_rows_range: tuple[int, int] = (MIN_LEDGER_ROWS, MAX_LEDGER_ROWS)
-    n_documents_range: tuple[int, int] = (20, 200)
-    n_entities_range: tuple[int, int] = (5, 30)
+    schema_version: str = Field(default=SCHEMA_VERSION, pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$")
+    n_ledger_rows_range: tuple[NonNegInt, NonNegInt] = (MIN_LEDGER_ROWS, MAX_LEDGER_ROWS)
+    n_documents_range: tuple[NonNegInt, NonNegInt] = (20, 200)
+    n_entities_range: tuple[NonNegInt, NonNegInt] = (5, 30)
     base_currency: CurrencyCode = "USD"
     foreign_currencies: tuple[CurrencyCode, ...] = ("EUR", "GBP")
     period_days: int = Field(default=90, ge=28, le=366)
@@ -507,14 +507,23 @@ class EpisodeConfig(FrozenModel):
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
-        for name in ("n_ledger_rows_range", "n_documents_range", "n_entities_range"):
+        # (floor, ceiling): rows >= 20 keep the misc fill-up solvable, entities <= 50 is the
+        # size of the fictional-name table, 5 is the number of supported foreign currencies.
+        bounds = {
+            "n_ledger_rows_range": (20, 20_000),
+            "n_documents_range": (2, 5_000),
+            "n_entities_range": (1, 50),
+        }
+        for name, (floor, ceiling) in bounds.items():
             lo, hi = getattr(self, name)
-            if not 1 <= lo <= hi:
-                raise ValueError(f"{name} must satisfy 1 <= lo <= hi")
+            if not floor <= lo <= hi <= ceiling:
+                raise ValueError(f"{name} must satisfy {floor} <= lo <= hi <= {ceiling}")
         if self.base_currency in self.foreign_currencies:
             raise ValueError("base_currency must not appear in foreign_currencies")
         if len(set(self.foreign_currencies)) != len(self.foreign_currencies):
             raise ValueError("foreign_currencies must be unique")
+        if len(self.foreign_currencies) > 5:
+            raise ValueError("at most 5 foreign currencies are supported")
         return self
 
 
