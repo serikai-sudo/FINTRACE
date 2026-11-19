@@ -30,6 +30,10 @@ DEFAULT_PARETO_MIX: Final[Decimal] = Decimal("0.15")  # share of draws that get 
 _MICRO: Final[int] = 1_000_000  # micro-decades per decade
 _LO_MICRO: Final[int] = round(BENFORD_LO_EXPONENT * _MICRO)
 _HI_MICRO: Final[int] = round(BENFORD_HI_EXPONENT * _MICRO)
+# log10(d) in micro-decades for d = 1..10: mantissa bin of first digit d is [bounds[d-1], bounds[d])
+_DIGIT_BOUNDS_MICRO: Final[tuple[int, ...]] = tuple(
+    round(math.log10(d) * _MICRO) for d in range(1, 11)
+)
 _SIX_PLACES: Final[Decimal] = Decimal("0.000001")
 _THREE_PLACES: Final[Decimal] = Decimal("0.001")
 # log10(1 + 1/d), quantized to 6 places; the nine values sum to exactly 1.000000.
@@ -58,10 +62,24 @@ def _micro_decades(exponent: Decimal) -> int:
     return int(exponent * _MICRO)
 
 
-def _pareto_shift_micro(rng: random.Random, index: int, count: int) -> int:
-    """Pareto(alpha) tail as a log10 shift (micro-decades) at the quantile (index + u) / count."""
+def _pareto_decades(rng: random.Random, index: int, count: int) -> int:
+    """Pareto(alpha) tail as a whole-decade jump (>= 1) at the quantile (index + u) / count.
+
+    Whole decades keep the first digit, so the tail makes upper decades heavier without
+    disturbing Benford's law; the fold caps jumps at the top decade.
+    """
     quantile = (index + rng.random()) / count
-    return round(-math.log10(1.0 - quantile) / BENFORD_PARETO_ALPHA * _MICRO)
+    return max(1, round(-math.log10(1.0 - quantile) / BENFORD_PARETO_ALPHA))
+
+
+def _apportion_first_digits(n: int) -> list[int]:
+    """Largest-remainder apportionment of ``n`` observations to Benford's nine frequencies."""
+    quotas = [_BENFORD_FREQUENCIES[d] * n for d in range(1, 10)]
+    counts = [int(q) for q in quotas]
+    by_remainder = sorted(range(9), key=lambda i: (quotas[i] - counts[i], -i), reverse=True)
+    for i in by_remainder[: n - sum(counts)]:
+        counts[i] += 1
+    return counts
 
 
 def _amount_from_micro(micro: int, minor_unit_digits: int) -> int:
@@ -88,7 +106,7 @@ def benford_amount_minor(
     lo, width = _micro_decades(mean_exponent - span), _micro_decades(2 * span)
     micro = lo + rng.randrange(width)
     if rng.random() < float(pareto_mix):
-        micro += _pareto_shift_micro(rng, 0, 1)
+        micro += _pareto_decades(rng, 0, 1) * _MICRO
     return _amount_from_micro(micro, minor_unit_digits)
 
 
@@ -100,22 +118,31 @@ def benford_amounts_minor(
     span: Decimal = DEFAULT_SPAN,
     pareto_mix: Decimal = DEFAULT_PARETO_MIX,
 ) -> list[MinorUnits]:
-    """Sample ``n`` amounts with a stratified log-mantissa; first-digit law holds tightly.
-
-    Both the base magnitudes and the Pareto tail are stratified (deterministic quantiles on
-    evenly spaced positions), which removes the sampling noise an i.i.d. draw would add: the
-    chi-squared test at the 5 % critical value passes for every seed, not for 95 % of them.
+    """Sample ``n`` amounts whose first digits match Benford's frequencies as closely as integers
+    allow (largest-remainder quotas), with the mantissa stratified inside each digit bin and the
+    decade cycled evenly over the configured range; the Pareto tail jumps whole decades on evenly
+    spaced positions. This removes sampling noise, so the batch itself always passes the
+    chi-squared test; derived amounts (splits, repeats) are what adds noise downstream.
     Output order is shuffled.
     """
     if n <= 0:
         return []
-    lo, width = _micro_decades(mean_exponent - span), _micro_decades(2 * span)
-    micros = [lo + (width * i + rng.randrange(width)) // n for i in range(n)]
+    lo_decade = math.floor(float(mean_exponent - span))
+    hi_decade = math.ceil(float(mean_exponent + span))
+    decades = list(range(lo_decade, max(hi_decade, lo_decade + 1)))
+    micros: list[int] = []
+    for digit, count in zip(range(1, 10), _apportion_first_digits(n), strict=True):
+        lo_m, hi_m = _DIGIT_BOUNDS_MICRO[digit - 1], _DIGIT_BOUNDS_MICRO[digit]
+        width = hi_m - lo_m
+        offset = rng.randrange(len(decades))
+        for i in range(count):
+            mantissa = lo_m + (width * i + rng.randrange(width)) // count
+            micros.append(decades[(offset + i) % len(decades)] * _MICRO + mantissa)
     n_tail = round(float(pareto_mix) * n)
     if n_tail > 0:
         step = n / n_tail
         for j in range(n_tail):
-            micros[int(step * j + step / 2)] += _pareto_shift_micro(rng, j, n_tail)
+            micros[int(step * j + step / 2)] += _pareto_decades(rng, j, n_tail) * _MICRO
     rng.shuffle(micros)
     return [_amount_from_micro(m, minor_unit_digits) for m in micros]
 

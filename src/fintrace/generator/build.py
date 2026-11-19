@@ -1,8 +1,11 @@
 """Top-level entry point: ``build_clean_episode(seed, config) -> PrivateEpisode`` (no issues yet).
 
 Determinism key = ENV_VERSION : SCHEMA_VERSION : seed : canonical(config). It seeds the root
-RNG, every subsystem gets a label-derived sub-RNG, and the episode id is a hash prefix of the key.
-Sequential generator ids are permuted at the end so that id order never reveals generation order.
+RNG and every subsystem gets a label-derived sub-RNG. The public ``episode_id`` is a hash prefix
+of the generated public CONTENT, not of the key: a key hash would let anyone recover the seed
+(and regenerate the truth) by brute force at one sha256 per candidate; a content hash costs a
+full episode generation per candidate. Sequential generator ids are permuted at the end so that
+id order never reveals generation order.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+from decimal import Decimal
 from typing import Any, Final
 
 from fintrace import __version__
@@ -29,27 +33,43 @@ from .fx import SUPPORTED_CURRENCIES, generate_all_fx_rates
 from .history import generate_clean_history
 from .validate import validate_clean_history
 
-_ID_FIELDS: Final[tuple[str, ...]] = (
-    "row_id", "journal_id", "entity_id", "invoice_id", "payment_id", "doc_id",
-)  # fmt: skip
+# id-bearing fields per payload kind; every label is "<FAMILY>-<digits>" and families are
+# permuted independently (E, DOC, INV, PAY, J, L)
+_ID_FIELDS_BY_KIND: Final[dict[str, tuple[str, ...]]] = {
+    "invoices": ("doc_id", "invoice_id", "entity_id"),
+    "payments": ("doc_id", "payment_id"),
+    "ledger": ("row_id", "journal_id", "entity_id", "invoice_id", "payment_id"),
+}
 _EPISODE_ID_HEX: Final[int] = 12
 _SEED_HASH_HEX: Final[int] = 16
 
 Payload = dict[str, list[dict[str, Any]]]
 
 
+def _json_default(value: object) -> str:
+    """Decimal -> normalised plain string ("0.40" and "0.4" hash alike); nothing else allowed."""
+    if isinstance(value, Decimal):
+        return format(value.normalize(), "f")
+    raise TypeError(f"not JSON serialisable for hashing: {type(value).__name__}")
+
+
 def _canonical_json(obj: object) -> str:
-    """Sorted keys, compact separators, no NaN; the only JSON form used for hashing."""
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    """Sorted keys, compact separators, no NaN, normalised Decimals; the only form hashed."""
+    return json.dumps(
+        obj, sort_keys=True, separators=(",", ":"), allow_nan=False, default=_json_default
+    )
+
+
+def _sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _rng_key(seed: int, config: EpisodeConfig) -> str:
-    config_json = _canonical_json(config.model_dump(mode="json"))
-    return f"{ENV_VERSION}:{SCHEMA_VERSION}:{seed}:{config_json}"
+    return f"{ENV_VERSION}:{SCHEMA_VERSION}:{seed}:{_canonical_json(config.model_dump())}"
 
 
 def _key_digest(seed: int, config: EpisodeConfig) -> str:
-    return hashlib.sha256(_rng_key(seed, config).encode("utf-8")).hexdigest()
+    return _sha256_hex(_rng_key(seed, config))
 
 
 def _derive_root_rng(seed: int, config: EpisodeConfig) -> random.Random:
@@ -57,8 +77,9 @@ def _derive_root_rng(seed: int, config: EpisodeConfig) -> random.Random:
     return random.Random(int(_key_digest(seed, config), 16))
 
 
-def _episode_id(seed: int, config: EpisodeConfig) -> str:
-    return f"ep_{_key_digest(seed, config)[:_EPISODE_ID_HEX]}"
+def _episode_id(public_content: dict[str, Any]) -> str:
+    """``ep_`` + 12 hex of sha256 over the canonical public content (never over the seed)."""
+    return f"ep_{_sha256_hex(_canonical_json(public_content))[:_EPISODE_ID_HEX]}"
 
 
 def _check_supported_currencies(config: EpisodeConfig) -> None:
@@ -74,29 +95,33 @@ def _permute_ids(payload: Payload, rng: random.Random) -> Payload:
     Breaks the sequential-id -> generation-order correlation while keeping the label sets (and
     therefore the files' shape) unchanged.
     """
-    labels_by_family: dict[str, set[str]] = {}
-    for rows in payload.values():
+    labels_by_family: dict[str, set[str]] = {}  # sets for membership; sorted before use
+    for kind, rows in payload.items():
+        fields = _ID_FIELDS_BY_KIND[kind]
         for row in rows:
-            for field in _ID_FIELDS:
-                value = row.get(field)
-                if isinstance(value, str):
-                    labels_by_family.setdefault(value.split("-", 1)[0], set()).add(value)
-            for ref in row.get("invoice_refs", ()):
-                labels_by_family.setdefault("INV", set()).add(ref["invoice_id"])
+            for field in fields:
+                value = row[field]
+                if value is not None:
+                    labels_by_family.setdefault(value[: value.index("-")], set()).add(value)
+            if kind == "payments":
+                for ref in row["invoice_refs"]:
+                    labels_by_family.setdefault("INV", set()).add(ref["invoice_id"])
     rename: dict[str, str] = {}
     for family in sorted(labels_by_family):
         labels = sorted(labels_by_family[family])
         shuffled = list(labels)
         rng.shuffle(shuffled)
         rename.update(zip(labels, shuffled, strict=True))
-    for rows in payload.values():
+    for kind, rows in payload.items():
+        fields = _ID_FIELDS_BY_KIND[kind]
         for row in rows:
-            for field in _ID_FIELDS:
-                value = row.get(field)
-                if isinstance(value, str):
+            for field in fields:
+                value = row[field]
+                if value is not None:
                     row[field] = rename[value]
-            for ref in row.get("invoice_refs", ()):
-                ref["invoice_id"] = rename[ref["invoice_id"]]
+            if kind == "payments":
+                for ref in row["invoice_refs"]:
+                    ref["invoice_id"] = rename[ref["invoice_id"]]
     payload["invoices"].sort(key=lambda r: (r["issued_at"], r["invoice_id"]))
     payload["payments"].sort(key=lambda r: (r["timestamp"], r["payment_id"]))
     payload["ledger"].sort(key=lambda r: (r["timestamp"], r["row_id"]))
@@ -130,7 +155,17 @@ def build_clean_episode(seed: int, config: EpisodeConfig | None = None) -> Priva
     }
     payload = _permute_ids(payload, permute_rng)
 
-    episode_id = _episode_id(seed, config)
+    episode_id = _episode_id(
+        {
+            "base_currency": config.base_currency,
+            "period_start": company.period_start,
+            "period_end": company.period_end,
+            "timezone": config.timezone,
+            "policy": company.policy.model_dump(),
+            "fx": [fx.model_dump() for fx in fx_rates],
+            **payload,
+        }
+    )
     manifest = Manifest(
         schema_version=SCHEMA_VERSION,
         episode_id=episode_id,
