@@ -106,28 +106,44 @@ def check_invoice_totals(invoices: Sequence[Invoice]) -> None:
         raise ConsistencyError("invoice_totals", "due_at must be after issued_at", late_due)
 
 
-def check_payment_allocation(payments: Sequence[Payment], invoices: Sequence[Invoice]) -> None:
+def check_payment_allocation(
+    payments: Sequence[Payment],
+    invoices: Sequence[Invoice],
+    ignore_ids: frozenset[str] = frozenset(),
+) -> None:
     """One allocation per payment hitting an existing same-currency invoice, dated after it;
-    allocations equal the payment amount and never overpay the invoice."""
+    allocations equal the payment amount and never overpay the invoice.
+
+    Payments in ``ignore_ids`` carry a deliberately injected allocation error that the injector
+    verifies on its own (``independent_check``). For them only the two rules such an error
+    violates are relaxed: the single allocation equal to the amount, and the overpayment
+    accounting. Every allocation they still carry must hit an existing same-currency invoice
+    issued no later than the payment, with a positive amount.
+    """
     invoice_by_id = {invoice.invoice_id: invoice for invoice in invoices}
     allocated: dict[str, int] = defaultdict(int)
     bad: list[str] = []
     for payment in payments:
         refs = payment.invoice_refs
-        if len(refs) != 1 or refs[0].allocated_minor != payment.amount_minor:
+        relaxed = payment.payment_id in ignore_ids
+        if not relaxed and (len(refs) != 1 or refs[0].allocated_minor != payment.amount_minor):
             bad.append(payment.payment_id)
             continue
-        ref = refs[0]
-        invoice = invoice_by_id.get(ref.invoice_id)
-        if (
-            invoice is None
-            or invoice.currency != payment.currency
-            or ref.allocated_minor < 1
-            or datetime.fromisoformat(payment.timestamp) < datetime.fromisoformat(invoice.issued_at)
-        ):
-            bad.append(payment.payment_id)
-            continue
-        allocated[ref.invoice_id] += ref.allocated_minor
+        paid_at = datetime.fromisoformat(payment.timestamp)
+        for ref in refs:
+            invoice = invoice_by_id.get(ref.invoice_id)
+            if (
+                invoice is None
+                or invoice.currency != payment.currency
+                or ref.allocated_minor < 1
+                or paid_at < datetime.fromisoformat(invoice.issued_at)
+            ):
+                bad.append(payment.payment_id)
+                break
+        else:
+            if not relaxed:
+                for ref in refs:
+                    allocated[ref.invoice_id] += ref.allocated_minor
     if bad:
         raise ConsistencyError(
             "payment_allocation", "allocation does not match payment/invoice", bad
@@ -216,11 +232,14 @@ def check_ledger_matches_documents(
     policy: Policy,
     fx_rates: Sequence[FXRate],
     base_currency: CurrencyCode,
+    ignore_ids: frozenset[str] = frozenset(),
 ) -> None:
     """Every document has exactly its journal; referenced documents exist; misc rows are tame.
 
     Misc (document-less) rows: never AP/AR, base currency only, EXPENSE/CASH/REVENUE only, and
     an entity_id, if present, belongs to a counterparty that has an invoice in the episode.
+    The journal check is skipped for payments in ``ignore_ids`` (injected allocation errors);
+    their ledger rows still have to reference existing documents.
     """
     invoice_by_id = {invoice.invoice_id: invoice for invoice in invoices}
     payment_by_id = {payment.payment_id: payment for payment in payments}
@@ -269,6 +288,8 @@ def check_ledger_matches_documents(
     fx_index = build_fx_index(fx_rates)
     bad_payments: list[str] = []
     for payment in payments:
+        if payment.payment_id in ignore_ids:
+            continue
         first_ref = payment.invoice_refs[0].invoice_id if payment.invoice_refs else None
         invoice = invoice_by_id.get(first_ref) if first_ref is not None else None
         rows = rows_by_payment.get(payment.payment_id, [])
@@ -342,11 +363,15 @@ def check_benford(
     return chi
 
 
-def validate_clean_history(ep: PublicEpisode | PrivateEpisode) -> None:
+def validate_clean_history(
+    ep: PublicEpisode | PrivateEpisode, *, ignore_ids: frozenset[str] = frozenset()
+) -> None:
     """Run every required check (loud) plus the Benford signal; raise ConsistencyError.
 
     Order: manifest counts, unique_ids, balanced, invoice_totals, payment_allocation,
-    ledger_matches_documents, period, fx_coverage, benford (signal only).
+    ledger_matches_documents, period, fx_coverage, benford (signal only). ``ignore_ids`` names
+    the documents an injector deliberately made inconsistent; only the allocation and journal
+    checks of those documents are skipped, everything else is still enforced.
     """
     public = ep.public if isinstance(ep, PrivateEpisode) else ep
     manifest = public.manifest
@@ -356,7 +381,7 @@ def validate_clean_history(ep: PublicEpisode | PrivateEpisode) -> None:
     check_unique_ids(public.ledger, public.invoices, public.payments)
     check_balanced(public.ledger)
     check_invoice_totals(public.invoices)
-    check_payment_allocation(public.payments, public.invoices)
+    check_payment_allocation(public.payments, public.invoices, ignore_ids)
     check_ledger_matches_documents(
         public.ledger,
         public.invoices,
@@ -364,6 +389,7 @@ def validate_clean_history(ep: PublicEpisode | PrivateEpisode) -> None:
         public.policy,
         public.fx,
         manifest.base_currency,
+        ignore_ids,
     )
     check_period(public.ledger, manifest)
     check_fx_coverage(public.fx, manifest, public.invoices, public.payments)

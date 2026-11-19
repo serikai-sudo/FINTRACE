@@ -16,15 +16,18 @@ from __future__ import annotations
 
 import hashlib
 import random
+from collections import Counter
 from datetime import datetime, timedelta
 from typing import Final, Protocol
 
 from fintrace.generator.company import EntityKind
 from fintrace.models import (
+    CurrencyCode,
     InjectorParams,
     Invoice,
     Issue,
     IssueType,
+    Payment,
     PrivateEpisode,
     ProvenanceEntry,
     PublicEpisode,
@@ -36,6 +39,9 @@ INJECTOR_ORDER: Final[tuple[IssueType, ...]] = (
     "fx_error",
     "period_misclassification",
 )
+# ops that modify an existing document in place; the structural checks skip that document
+# (duplicate_invoice only adds records, which stay under the full clean contract)
+SOURCE_MODIFYING_OPS: Final[frozenset[str]] = frozenset({"payment_allocation"})
 _ISSUE_ID_MODULUS: Final[int] = 10_000  # ISS-0000 .. ISS-9999 (frozen ISSUE_ID_PATTERN)
 
 
@@ -125,6 +131,103 @@ def touched_ids(private: PrivateEpisode) -> set[str]:
     return ids
 
 
+def inconsistent_ids(private: PrivateEpisode) -> frozenset[str]:
+    """Documents that injections deliberately made inconsistent (skipped by the clean checks).
+
+    Only the ``source_id`` of ops in ``SOURCE_MODIFYING_OPS`` qualifies; every record another
+    injector created is still held to the full clean contract by ``validate_clean_history``.
+    """
+    return frozenset(
+        entry.source_id
+        for entry in private.provenance.injections
+        if entry.op in SOURCE_MODIFYING_OPS and entry.source_id is not None
+    )
+
+
+def pick_eligible_payment(
+    episode: PrivateEpisode,
+    rng: random.Random,
+    require_allocated: bool = True,
+    currency_match_count: int = 1,
+) -> Payment:
+    """A clean payment that no earlier injection touched and that is not a split decoy.
+
+    Eligible: clean shape (one allocation equal to the amount; ``require_allocated=False`` is
+    reserved for injectors that accept unallocated payments, none today), payment, document and
+    referenced invoice outside ``touched_ids``, the invoice paid by this payment alone (split
+    payments are legitimate decoys and never a source), and at least ``currency_match_count``
+    untouched invoices in the payment's currency, the target included (the wrong-reference
+    variant asks for 2 as a coarse pre-filter; its stricter target search may still reject the
+    draw, and build.py then retries on a fresh RNG). Candidates keep canonical payment order.
+    """
+    public = episode.public
+    touched = touched_ids(episode)
+    payments_per_invoice = Counter(r.invoice_id for p in public.payments for r in p.invoice_refs)
+    invoices_per_currency = Counter(
+        i.currency for i in public.invoices if i.invoice_id not in touched
+    )
+    candidates: list[Payment] = []
+    for payment in public.payments:
+        refs = payment.invoice_refs
+        if payment.payment_id in touched or payment.doc_id in touched:
+            continue
+        if require_allocated and (
+            len(refs) != 1 or refs[0].allocated_minor != payment.amount_minor
+        ):
+            continue
+        if refs and (
+            refs[0].invoice_id in touched or payments_per_invoice[refs[0].invoice_id] != 1
+        ):
+            continue
+        if invoices_per_currency[payment.currency] < currency_match_count:
+            continue
+        candidates.append(payment)
+    if not candidates:
+        raise InjectorError("no eligible payment for an allocation injection")
+    return rng.choice(candidates)
+
+
+def find_other_invoice_same_currency(
+    episode: PrivateEpisode,
+    exclude_invoice_ids: set[str],
+    currency: CurrencyCode,
+    rng: random.Random,
+    *,
+    payment: Payment | None = None,
+) -> Invoice:
+    """An untouched invoice in ``currency`` outside ``exclude_invoice_ids`` (wrong-reference).
+
+    Split-paid invoices are skipped: a legitimate decoy must never be entangled with an injected
+    issue. With ``payment`` given, the target must also be issued no later than the payment and
+    have a total of at least the payment's allocation, so the misallocated payment carries no
+    single-document tell (a payment predating its invoice, an allocation above the invoice
+    total) and is found only by reconciling the document against the ledger. The target may
+    already be paid: a payment applied twice is a realistic misposting and shows up only when
+    all allocations of that invoice are added up.
+    """
+    payments_per_invoice = Counter(
+        r.invoice_id for p in episode.public.payments for r in p.invoice_refs
+    )
+    excluded = exclude_invoice_ids | touched_ids(episode)
+    excluded |= {invoice_id for invoice_id, n in payments_per_invoice.items() if n >= 2}
+    paid_at = datetime.fromisoformat(payment.timestamp) if payment is not None else None
+    allocated = payment.invoice_refs[0].allocated_minor if payment is not None else 0
+    candidates = sorted(
+        (
+            invoice
+            for invoice in episode.public.invoices
+            if invoice.currency == currency
+            and invoice.invoice_id not in excluded
+            and (paid_at is None or datetime.fromisoformat(invoice.issued_at) <= paid_at)
+            and invoice.total_minor >= allocated
+        ),
+        key=lambda invoice: invoice.invoice_id,
+    )
+    if not candidates:
+        raise InjectorError(f"no other {currency} invoice to misallocate to")
+    return rng.choice(candidates)
+
+
 def append_truth_and_provenance(
     private: PrivateEpisode, issue: Issue, entry: ProvenanceEntry
 ) -> PrivateEpisode:
@@ -138,12 +241,16 @@ def append_truth_and_provenance(
 
 __all__ = [
     "INJECTOR_ORDER",
+    "SOURCE_MODIFYING_OPS",
     "Injector",
     "InjectorError",
     "append_truth_and_provenance",
     "derive_issue_id",
+    "find_other_invoice_same_currency",
     "fresh_label",
+    "inconsistent_ids",
     "invoice_side",
+    "pick_eligible_payment",
     "shift_timestamp",
     "touched_ids",
     "used_labels",

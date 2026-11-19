@@ -36,7 +36,12 @@ from .benford import derive_sub_rng
 from .company import DEFAULT_ROUNDING, generate_company
 from .fx import SUPPORTED_CURRENCIES, generate_all_fx_rates
 from .history import generate_clean_history
-from .injectors.base import INJECTOR_ORDER, InjectorError, append_truth_and_provenance
+from .injectors.base import (
+    INJECTOR_ORDER,
+    InjectorError,
+    append_truth_and_provenance,
+    inconsistent_ids,
+)
 from .validate import ConsistencyError, validate_clean_history
 
 # id-bearing fields per payload kind; every label is "<FAMILY>-<digits>" and families are
@@ -292,19 +297,25 @@ def _inject_with_retries(
     index: int,
     params: InjectorParams,
 ) -> PrivateEpisode:
-    """Apply one injection, re-drawing its RNG until the structural and independent checks pass."""
+    """Apply one injection, re-drawing its RNG until the structural and independent checks pass.
+
+    The structural check skips only the documents that injected issues deliberately made
+    inconsistent (``inconsistent_ids`` over the provenance, the new entry included); every other
+    record, the ones earlier injectors created among them, is still held to the clean contract.
+    """
     module = _load_injector(kind)
     last_error: Exception | None = None
     for attempt in range(INJECTOR_MAX_RETRY_ATTEMPTS):
         rng = _derive_injector_rng(seed, config, kind, index, attempt)
         try:
             candidate, issue, entry = module.inject(private, rng, params)
-            validate_clean_history(candidate)
-            module.independent_check(candidate.public, issue)
+            result = append_truth_and_provenance(candidate, issue, entry)
+            validate_clean_history(result, ignore_ids=inconsistent_ids(result))
+            module.independent_check(result.public, issue)
         except (ConsistencyError, InjectorError) as exc:
             last_error = exc
             continue
-        return append_truth_and_provenance(candidate, issue, entry)
+        return result
     raise InjectorError(
         f"{kind} #{index} failed after {INJECTOR_MAX_RETRY_ATTEMPTS} attempts"
     ) from last_error
@@ -336,6 +347,13 @@ def build_episode(seed: int, config: EpisodeConfig | None = None) -> PrivateEpis
         params: InjectorParams = getattr(config.errors, kind)
         for index in range(params.count):
             private = _inject_with_retries(private, seed, config, kind, index, params)
+    # every issue must still be rediscoverable on the final books: a later injection is not
+    # allowed to mask an earlier one (eligibility rules prevent it; this makes it a contract)
+    for issue in private.truth.issues:
+        try:
+            _load_injector(issue.type).independent_check(private.public, issue)
+        except ConsistencyError as exc:
+            raise InjectorError(f"issue {issue.issue_id} is masked by a later injection") from exc
     return _reassign_episode_id(private)
 
 
