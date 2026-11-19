@@ -1,8 +1,8 @@
 """Tool registry: argument schemas, handlers, action parsing and dispatch.
 
 Handlers are pure functions ``(args, state, episode) -> ToolResult`` over the PublicEpisode only.
-The registry never imports fintrace.evaluator; the matcher reaches submit through the
-environment (dependency injection, step 6).
+The registry never imports fintrace.evaluator; the matcher reaches an accepted submission
+through the environment (dependency injection).
 """
 
 from __future__ import annotations

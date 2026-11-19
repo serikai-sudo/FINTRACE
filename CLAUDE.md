@@ -62,7 +62,9 @@ architecture; extend existing files first.
 | Command             | What it does                                                    |
 |---------------------|-----------------------------------------------------------------|
 | `make install`      | `pip install -r requirements.txt -e ".[dev]"` (pinned runtime + dev) |
-| `make test`         | `pytest` (config in `pyproject.toml`; warnings are errors)      |
+| `make test`         | `pytest -m "not slow"` — the fast suite (< 40 s; config in `pyproject.toml`; warnings are errors) |
+| `make test-slow`    | `pytest -m slow` — seed sweeps, fuzz, full leak scan (≈ 2 min)  |
+| `make test-all`     | `pytest -m ""` — both suites                                    |
 | `make lint`         | `ruff check src/ tests/ scripts/` — must be zero findings       |
 | `make schemas`      | regenerate `schemas/{manifest,invoice,payment,submission}.schema.json` from `models.py`; run after every model change, under the pinned deps from `make install` (drift test fails otherwise) |
 | `make demo`         | end-to-end demo episode (TODO)                                  |
@@ -149,9 +151,11 @@ Python interpreter: **3.11 only** (`requires-python = ">=3.11,<3.12"`). Create t
 ## 8. Testing
 
 - **Every feature ships with a test** in the matching folder: `contract/` (schemas, API, error
-  contract), `reward/` (reward correctness), `repro/` (seed determinism), `robustness/` (attack
-  agents), `integration/` (end-to-end episode).
+  contract, fuzz), `reward/` (reward correctness), `repro/` (seed determinism), `robustness/`
+  (attack agents), `security/` (isolation, leak scans), `integration/` (end-to-end episode).
 - Run `make test` (and `make lint`) **after every change**. Red tests or lint findings block commit.
+  Tests slower than ~10 s (seed sweeps, fuzz, full leak scans) carry `@pytest.mark.slow`, are
+  excluded from `make test` and run with `make test-slow`; CI runs both jobs.
 - **Leak-scan test gates all observations**: every observation, tool output and error payload is
   scanned for ground-truth values, provenance fields and the seed; any hit fails the suite.
 - Pytest runs with `filterwarnings = error`, `--strict-markers`, `xfail_strict`.
