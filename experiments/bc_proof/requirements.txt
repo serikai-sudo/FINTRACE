@@ -1,0 +1,6 @@
+# Behaviour-cloning proof experiment ONLY.
+# - Never installed into the shipped Docker image.
+# - Never imported from src/ (enforced by ruff banned-api "torch" in pyproject.toml).
+# Install CPU wheels:
+#   pip install -r experiments/bc_proof/requirements.txt --index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0

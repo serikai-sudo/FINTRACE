@@ -1,0 +1,43 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+pip-wheel-metadata/
+MANIFEST
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+.env
+
+# --- Test / lint / type caches ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+.ipynb_checkpoints/
+.DS_Store
+
+# --- FINTRACE generated artifacts (never commit episode data) ---
+trajectories/*.jsonl
+data/train/*.json*
+data/dev/*.json*
+
+# Keep directory placeholders
+!.gitkeep

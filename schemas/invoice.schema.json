@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:fintrace:schema:invoice:1.0.0",
+  "title": "Invoice",
+  "description": "TODO: placeholder, defined in a later blueprint step.",
+  "type": "object"
+}

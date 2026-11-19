@@ -1,0 +1,12 @@
+# FINTRACE default episode configuration.
+# train.yaml and dev.yaml inherit from this file and override keys as needed.
+schema_version: "1.0.0"
+episode:
+  n_ledger_rows: 500
+  n_documents: 60
+  errors:
+    duplicate_invoice: 1
+    partial_payment: 1
+    fx_error: 1
+    period_misclass: 1
+    clean_decoys: 3
