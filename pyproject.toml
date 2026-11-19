@@ -47,6 +47,7 @@ ignore = ["S311"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"]
+"scripts/**" = ["T20"]  # CLI tools report to stdout; the no-print rule applies to src/ only
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 # Wall clock / unseeded identifiers — episode data must derive from the seed only.

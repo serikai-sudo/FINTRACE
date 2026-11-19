@@ -1,7 +1,82 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Rounding": {
+      "additionalProperties": false,
+      "description": "Rounding convention declared in the manifest.",
+      "properties": {
+        "mode": {
+          "enum": [
+            "ROUND_HALF_EVEN",
+            "ROUND_HALF_UP",
+            "ROUND_DOWN"
+          ],
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "per_line",
+            "per_total"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "stage"
+      ],
+      "title": "Rounding",
+      "type": "object"
+    }
+  },
   "$id": "urn:fintrace:schema:manifest:1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Episode header: identity, period, sizes. Contains no seed.",
+  "properties": {
+    "base_currency": {
+      "pattern": "^[A-Z]{3}$",
+      "type": "string"
+    },
+    "episode_id": {
+      "pattern": "^ep_[0-9a-f]{10,16}$",
+      "type": "string"
+    },
+    "n_documents": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "n_ledger_rows": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "period_end": {
+      "type": "string"
+    },
+    "period_start": {
+      "type": "string"
+    },
+    "rounding": {
+      "$ref": "#/$defs/Rounding"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "timezone": {
+      "pattern": "^(?:[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]|UTC|[A-Za-z_]+(?:/[A-Za-z0-9_+\\-]+)+)$",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "episode_id",
+    "base_currency",
+    "period_start",
+    "period_end",
+    "timezone",
+    "n_ledger_rows",
+    "n_documents",
+    "rounding"
+  ],
   "title": "Manifest",
-  "description": "TODO: placeholder, defined in a later blueprint step.",
   "type": "object"
 }

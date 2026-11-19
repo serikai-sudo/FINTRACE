@@ -2,6 +2,114 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:fintrace:schema:trajectory:1.0.0",
   "title": "Trajectory",
-  "description": "TODO: placeholder, defined in a later blueprint step.",
-  "type": "object"
+  "description": "One agent trajectory for one episode (one JSONL line in trajectories/): the agent-visible transcript (actions, observations, rewards) plus optional evaluator-side `metrics`. `metrics` are labels derived from the hidden ground truth — strip them before feeding trajectories to any agent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "env_version",
+    "episode_id",
+    "agent",
+    "steps",
+    "final_reward",
+    "terminated",
+    "truncated"
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "env_version": {"type": "string"},
+    "episode_id": {"type": "string", "pattern": "^ep_[0-9a-f]{10,16}$"},
+    "agent": {"type": "string", "maxLength": 64},
+    "steps": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/Step"}},
+    "final_reward": {"type": "number", "minimum": -1.0, "maximum": 1.0},
+    "terminated": {"type": "boolean"},
+    "truncated": {"type": "boolean"},
+    "metrics": {"$ref": "#/$defs/Metrics"}
+  },
+  "$defs": {
+    "Action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "args"],
+      "properties": {
+        "tool": {
+          "type": "string",
+          "enum": ["list_records", "get_record", "get_document", "calculator", "submit"]
+        },
+        "args": {"type": "object"}
+      }
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "INVALID_ACTION",
+            "INVALID_TABLE",
+            "NOT_FOUND",
+            "INVALID_CURSOR",
+            "CALC_ERROR",
+            "EPISODE_OVER",
+            "INVALID_SUBMISSION"
+          ]
+        }
+      }
+    },
+    "Observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ok", "tool", "result", "error", "steps_used", "steps_remaining"],
+      "properties": {
+        "ok": {"type": "boolean"},
+        "tool": {
+          "type": "string",
+          "enum": ["list_records", "get_record", "get_document", "calculator", "submit"]
+        },
+        "result": {"type": ["object", "null"]},
+        "error": {"anyOf": [{"$ref": "#/$defs/Error"}, {"type": "null"}]},
+        "steps_used": {"type": "integer", "minimum": 0, "maximum": 100},
+        "steps_remaining": {"type": "integer", "minimum": 0, "maximum": 100}
+      },
+      "if": {"properties": {"ok": {"const": true}}},
+      "then": {"properties": {"result": {"type": "object"}, "error": {"type": "null"}}},
+      "else": {"properties": {"result": {"type": "null"}, "error": {"$ref": "#/$defs/Error"}}}
+    },
+    "Info": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_steps", "version"],
+      "properties": {
+        "max_steps": {"type": "integer", "minimum": 1},
+        "version": {"type": "string"}
+      }
+    },
+    "Step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["step_index", "action", "observation", "reward", "terminated", "truncated", "info"],
+      "properties": {
+        "step_index": {"type": "integer", "minimum": 0, "maximum": 99},
+        "action": {"$ref": "#/$defs/Action"},
+        "observation": {"$ref": "#/$defs/Observation"},
+        "reward": {"type": "number", "minimum": -1.0, "maximum": 1.0},
+        "terminated": {"type": "boolean"},
+        "truncated": {"type": "boolean"},
+        "info": {"$ref": "#/$defs/Info"}
+      }
+    },
+    "Metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["f1", "precision", "recall", "inspection_steps"],
+      "properties": {
+        "f1": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "precision": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "recall": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "inspection_steps": {"type": "integer", "minimum": 0, "maximum": 100}
+      }
+    }
+  }
 }

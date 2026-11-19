@@ -30,7 +30,9 @@ installed in the Docker image and never imported from `src/` (ruff `banned-api` 
 
 ```
 config/            YAML episode configs (default/train/dev) + versions.json (pinned versions)
-schemas/           JSON Schemas: manifest, invoice, payment, submission, trajectory, ocel
+schemas/           JSON Schema 2020-12. manifest/invoice/payment/submission are GENERATED from
+                   models.py by `make schemas`; trajectory/ocel are hand-written (tests pin them
+                   to constants.py)
 data/{train,dev}/  generated episodes (git-ignored, only .gitkeep is tracked)
 src/fintrace/
   constants.py     project-wide Final constants
@@ -48,7 +50,8 @@ src/fintrace/
   transforms/      observation / data transforms
 experiments/bc_proof/  behaviour-cloning proof (torch; NOT part of the package or image)
 tests/             contract/, reward/, repro/, robustness/, integration/, test_smoke.py
-scripts/ trajectories/ docs/ demo/
+scripts/           CLI tooling: generate_schemas.py (`make schemas`)
+trajectories/ docs/ demo/
 ```
 
 Do not add top-level directories or new modules without explicit approval. The tree above is the
@@ -60,7 +63,8 @@ architecture; extend existing files first.
 |---------------------|-----------------------------------------------------------------|
 | `make install`      | `pip install -r requirements.txt -e ".[dev]"` (pinned runtime + dev) |
 | `make test`         | `pytest` (config in `pyproject.toml`; warnings are errors)      |
-| `make lint`         | `ruff check src/ tests/` — must be zero findings                |
+| `make lint`         | `ruff check src/ tests/ scripts/` — must be zero findings       |
+| `make schemas`      | regenerate `schemas/{manifest,invoice,payment,submission}.schema.json` from `models.py`; run after every model change, under the pinned deps from `make install` (drift test fails otherwise) |
 | `make demo`         | end-to-end demo episode (TODO)                                  |
 | `make baselines`    | run baseline agents on the dev split (TODO)                     |
 | `make attacks`      | run reward-hacking attack agents (TODO)                         |
@@ -82,6 +86,12 @@ Python interpreter: **3.11 only** (`requires-python = ">=3.11,<3.12"`). Create t
   Prefer `frozen=True` for records that must not mutate after generation.
 - **Money is `decimal.Decimal`** — never `float`. Quantize explicitly; parse from `str`, never from
   `float` (`Decimal("10.10")`, not `Decimal(10.1)`).
+- **Reuse the contract field types** from `fintrace.models` for these roles: identifiers →
+  `OpaqueId`, money in minor units → `MinorUnits`, sizes/step counters → `NonNegInt` / `StepCount`,
+  free-form JSON payloads → `JsonObject`. A bare `str` / `int` / `dict` is wrong for those roles
+  (bounded config values such as `qty` or `minor_unit_digits` stay plain `int` with `Field` limits).
+- **Schemas follow models**: after any change to `models.py` run `make schemas` and commit the
+  regenerated files. `tests/contract/test_schemas.py` compares them byte-for-byte and fails on drift.
 - **Timestamps are ISO-8601 with an explicit offset** (`2026-03-31T23:59:59+05:00`). Naive
   datetimes are bugs (ruff `DTZ`).
 - **Named exports**: every module declares `__all__`; import by name
@@ -101,6 +111,7 @@ Python interpreter: **3.11 only** (`requires-python = ">=3.11,<3.12"`). Create t
 | iterating a `set` (or `frozenset`) over episode content               | order varies with hash seed → `sorted(...)` first          | review, repro tests |
 | `eval()` / `exec()` in the safe calculator                            | code execution → AST-whitelisted evaluator                 | ruff `S307` / `S102` |
 | creating a new file when an existing one can be edited                | tree sprawl → extend the existing module                   | review |
+| hand-editing `schemas/{manifest,invoice,payment,submission}.schema.json` | they are generated → edit `models.py`, run `make schemas` | schema drift test |
 | importing `fintrace.evaluator` from `fintrace.agents.*`               | agents would see the scorer → keep isolation               | review (import-graph test planned) |
 | echoing the seed in `observation.info`                                | lets agents regenerate truth → never expose the seed       | leak-scan test |
 | stack traces / exception text in environment error responses          | leaks internals → only `{"error": {"code": "<CODE>"}}`     | contract tests |

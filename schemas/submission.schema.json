@@ -1,7 +1,82 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "Finding": {
+      "additionalProperties": false,
+      "description": "One reported issue in an agent submission.",
+      "properties": {
+        "affected_ids": {
+          "items": {
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9_\\-:.]+$",
+            "type": "string"
+          },
+          "maxItems": 20,
+          "type": "array"
+        },
+        "claimed_amount_minor": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "currency": {
+          "pattern": "^[A-Z]{3}$",
+          "type": "string"
+        },
+        "evidence_ids": {
+          "items": {
+            "maxLength": 64,
+            "pattern": "^[A-Za-z0-9_\\-:.]+$",
+            "type": "string"
+          },
+          "maxItems": 10,
+          "type": "array"
+        },
+        "explanation": {
+          "maxLength": 1000,
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "duplicate_invoice",
+            "payment_allocation",
+            "fx_error",
+            "period_misclassification"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "affected_ids",
+        "claimed_amount_minor",
+        "currency",
+        "evidence_ids",
+        "explanation"
+      ],
+      "title": "Finding",
+      "type": "object"
+    }
+  },
   "$id": "urn:fintrace:schema:submission:1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Final answer of the agent for one episode.",
+  "properties": {
+    "episode_id": {
+      "pattern": "^ep_[0-9a-f]{10,16}$",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "maxItems": 30,
+      "type": "array"
+    }
+  },
+  "required": [
+    "episode_id",
+    "findings"
+  ],
   "title": "Submission",
-  "description": "TODO: placeholder, defined in a later blueprint step.",
   "type": "object"
 }
