@@ -1,7 +1,87 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "LineItem": {
+      "additionalProperties": false,
+      "description": "Invoice line; amount is derived from quantity and unit price.",
+      "properties": {
+        "amount_minor": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "desc": {
+          "maxLength": 256,
+          "type": "string"
+        },
+        "qty": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "unit_minor": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "desc",
+        "qty",
+        "unit_minor",
+        "amount_minor"
+      ],
+      "title": "LineItem",
+      "type": "object"
+    }
+  },
   "$id": "urn:fintrace:schema:invoice:1.0.0",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Invoice document; total equals the sum of its line items.",
+  "properties": {
+    "currency": {
+      "pattern": "^[A-Z]{3}$",
+      "type": "string"
+    },
+    "doc_id": {
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_\\-:.]+$",
+      "type": "string"
+    },
+    "due_at": {
+      "type": "string"
+    },
+    "entity_id": {
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_\\-:.]+$",
+      "type": "string"
+    },
+    "invoice_id": {
+      "maxLength": 64,
+      "pattern": "^[A-Za-z0-9_\\-:.]+$",
+      "type": "string"
+    },
+    "issued_at": {
+      "type": "string"
+    },
+    "line_items": {
+      "items": {
+        "$ref": "#/$defs/LineItem"
+      },
+      "type": "array"
+    },
+    "total_minor": {
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "doc_id",
+    "invoice_id",
+    "entity_id",
+    "issued_at",
+    "due_at",
+    "currency",
+    "total_minor",
+    "line_items"
+  ],
   "title": "Invoice",
-  "description": "TODO: placeholder, defined in a later blueprint step.",
   "type": "object"
 }

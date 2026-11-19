@@ -2,6 +2,94 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:fintrace:schema:ocel:1.0.0",
   "title": "OCEL",
-  "description": "TODO: placeholder, defined in a later blueprint step.",
-  "type": "object"
+  "description": "Object-Centric Event Log in the OCEL 2.0 JSON exchange format, exported from a public episode: documents, entities and ledger rows are objects; postings and payments are events. Required keys follow the standard (id/type, plus time for events); attributes and relationships are optional.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["objectTypes", "eventTypes", "objects", "events"],
+  "properties": {
+    "objectTypes": {"type": "array", "items": {"$ref": "#/$defs/TypeDefinition"}},
+    "eventTypes": {"type": "array", "items": {"$ref": "#/$defs/TypeDefinition"}},
+    "objects": {"type": "array", "items": {"$ref": "#/$defs/Object"}},
+    "events": {"type": "array", "items": {"$ref": "#/$defs/Event"}}
+  },
+  "$defs": {
+    "AttributeType": {
+      "type": "string",
+      "enum": ["string", "time", "integer", "float", "boolean"]
+    },
+    "AttributeDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"$ref": "#/$defs/AttributeType"}
+      }
+    },
+    "TypeDefinition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "attributes"],
+      "properties": {
+        "name": {"type": "string"},
+        "attributes": {"type": "array", "items": {"$ref": "#/$defs/AttributeDefinition"}}
+      }
+    },
+    "Timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?([+-](?:[01][0-9]|2[0-3]):[0-5][0-9]|Z)$"
+    },
+    "AttributeValue": {"type": ["string", "number", "boolean", "null"]},
+    "ObjectAttribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "time", "value"],
+      "properties": {
+        "name": {"type": "string"},
+        "time": {"$ref": "#/$defs/Timestamp"},
+        "value": {"$ref": "#/$defs/AttributeValue"}
+      }
+    },
+    "EventAttribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": {"type": "string"},
+        "value": {"$ref": "#/$defs/AttributeValue"}
+      }
+    },
+    "Relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectId", "qualifier"],
+      "properties": {
+        "objectId": {"type": "string"},
+        "qualifier": {"type": "string"}
+      }
+    },
+    "Object": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"type": "string"},
+        "attributes": {"type": "array", "items": {"$ref": "#/$defs/ObjectAttribute"}},
+        "relationships": {"type": "array", "items": {"$ref": "#/$defs/Relationship"}}
+      }
+    },
+    "Event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "time"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"type": "string"},
+        "time": {"$ref": "#/$defs/Timestamp"},
+        "attributes": {"type": "array", "items": {"$ref": "#/$defs/EventAttribute"}},
+        "relationships": {"type": "array", "items": {"$ref": "#/$defs/Relationship"}}
+      }
+    }
+  }
 }
