@@ -1,0 +1,8 @@
+# Whitelist: the image needs only pinned deps and the package source.
+# Episode data, truth files, trajectories, .venv and .git never enter the build context.
+*
+!requirements.txt
+!src/
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info

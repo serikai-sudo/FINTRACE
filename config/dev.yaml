@@ -1,0 +1,13 @@
+# inherits: default.yaml
+# Dev (held-out) split. Only overridden keys will remain here once the config loader exists;
+# until then the full key set is mirrored from default.yaml.
+schema_version: "1.0.0"
+episode:
+  n_ledger_rows: 500
+  n_documents: 60
+  errors:
+    duplicate_invoice: 1
+    partial_payment: 1
+    fx_error: 1
+    period_misclass: 1
+    clean_decoys: 3
