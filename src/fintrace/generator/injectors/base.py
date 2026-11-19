@@ -30,6 +30,7 @@ from fintrace.models import (
     LedgerRow,
     Payment,
     PrivateEpisode,
+    Provenance,
     ProvenanceEntry,
     PublicEpisode,
 )
@@ -287,6 +288,17 @@ def find_other_invoice_same_currency(
     return rng.choice(candidates)
 
 
+def recurring_invoice_ids(provenance: Provenance) -> set[str]:
+    """Invoice ids the generator marked as legitimate recurring series (membership only)."""
+    ids: set[str] = set()
+    for event in provenance.history:
+        if event.get("op") == "generate_recurring_series":
+            invoice_ids = event.get("invoice_ids")
+            if isinstance(invoice_ids, list):
+                ids.update(str(invoice_id) for invoice_id in invoice_ids)
+    return ids
+
+
 def append_truth_and_provenance(
     private: PrivateEpisode, issue: Issue, entry: ProvenanceEntry
 ) -> PrivateEpisode:
@@ -313,6 +325,7 @@ __all__ = [
     "payment_journal_rows",
     "pick_eligible_payment",
     "pick_foreign_currency_payment",
+    "recurring_invoice_ids",
     "shift_timestamp",
     "touched_ids",
     "used_labels",

@@ -7,7 +7,9 @@ Built for Genesis Hackathon 2026 (FinTech track).
 
 ```bash
 make install   # pinned runtime deps + package (editable) + dev tools
-make test      # pytest
+make test      # fast tests (pytest -m "not slow")
+make test-slow # seed sweeps and other slow tests (pytest -m slow)
+make test-all  # everything
 make schemas   # regenerate the model-derived JSON Schemas after modifying src/fintrace/models.py
 make demo      # end-to-end demo episode (TODO)
 ```

@@ -1,13 +1,19 @@
 PYTHON ?= python
 IMAGE  ?= fintrace:0.1.0
 
-.PHONY: install test lint schemas demo baselines attacks oracle-gap clean docker-build docker-run
+.PHONY: install test test-slow test-all lint schemas demo baselines attacks oracle-gap clean docker-build docker-run
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt -e ".[dev]"
 
 test:
-	$(PYTHON) -m pytest
+	$(PYTHON) -m pytest -m "not slow"
+
+test-slow:
+	$(PYTHON) -m pytest -m slow
+
+test-all:
+	$(PYTHON) -m pytest -m ""
 
 lint:
 	$(PYTHON) -m ruff check src/ tests/ scripts/

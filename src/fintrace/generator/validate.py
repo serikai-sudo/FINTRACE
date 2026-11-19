@@ -164,8 +164,14 @@ def _two_rows(rows: list[LedgerRow]) -> tuple[LedgerRow, LedgerRow] | None:
     return debit[0], credit[0]
 
 
-def _invoice_side(invoice: Invoice, rows: list[LedgerRow]) -> Side | None:
-    """Side implied by a correct invoice journal, or None if the journal is wrong."""
+def _invoice_side(
+    invoice: Invoice, rows: list[LedgerRow], relax_timestamp: bool = False
+) -> Side | None:
+    """Side implied by a correct invoice journal, or None if the journal is wrong.
+
+    ``relax_timestamp`` (an injected period error on this journal) drops only the rule that the
+    posting carries the invoice date; currency, entity, amounts and accounts stay enforced.
+    """
     pair = _two_rows(rows)
     if pair is None:
         return None
@@ -173,7 +179,7 @@ def _invoice_side(invoice: Invoice, rows: list[LedgerRow]) -> Side | None:
     for row in pair:
         if (
             row.currency != invoice.currency
-            or row.timestamp != invoice.issued_at
+            or (not relax_timestamp and row.timestamp != invoice.issued_at)
             or row.entity_id != invoice.entity_id
             or row.payment_id is not None
         ):
@@ -284,7 +290,9 @@ def check_ledger_matches_documents(
     side_of: dict[str, Side] = {}
     bad_invoices: list[str] = []
     for invoice in invoices:
-        side = _invoice_side(invoice, rows_by_invoice.get(invoice.invoice_id, []))
+        rows = rows_by_invoice.get(invoice.invoice_id, [])
+        relax_timestamp = bool(rows) and all(row.row_id in ignore_ids for row in rows)
+        side = _invoice_side(invoice, rows, relax_timestamp)
         if side is None:
             bad_invoices.append(invoice.invoice_id)
         else:
@@ -316,11 +324,17 @@ def check_ledger_matches_documents(
         raise ConsistencyError(name, "payment journal missing or malformed", bad_payments)
 
 
-def check_period(ledger: Sequence[LedgerRow], manifest: Manifest) -> None:
-    """Every ledger timestamp lies in [period_start, period_end)."""
+def check_period(
+    ledger: Sequence[LedgerRow], manifest: Manifest, ignore_ids: frozenset[str] = frozenset()
+) -> None:
+    """Every ledger timestamp lies in [period_start, period_end); relaxed rows are exempt."""
     start = datetime.fromisoformat(manifest.period_start)
     end = datetime.fromisoformat(manifest.period_end)
-    outside = [r.row_id for r in ledger if not start <= datetime.fromisoformat(r.timestamp) < end]
+    outside = [
+        r.row_id
+        for r in ledger
+        if r.row_id not in ignore_ids and not start <= datetime.fromisoformat(r.timestamp) < end
+    ]
     if outside:
         raise ConsistencyError("period", "ledger rows outside the reporting period", outside)
 
@@ -385,8 +399,9 @@ def validate_clean_history(
 
     Order: manifest counts, unique_ids, balanced, invoice_totals, payment_allocation,
     ledger_matches_documents, period, fx_coverage, benford (signal only). ``ignore_ids`` names
-    the documents an injector deliberately made inconsistent; only the allocation and journal
-    checks of those documents are skipped, everything else is still enforced.
+    the records an injector deliberately made inconsistent: for a document only the allocation
+    and journal checks are skipped, for ledger rows only the amount, posting-date and period
+    rules; everything else is still enforced.
     """
     public = ep.public if isinstance(ep, PrivateEpisode) else ep
     manifest = public.manifest
@@ -406,7 +421,7 @@ def validate_clean_history(
         manifest.base_currency,
         ignore_ids,
     )
-    check_period(public.ledger, manifest)
+    check_period(public.ledger, manifest, ignore_ids)
     check_fx_coverage(public.fx, manifest, public.invoices, public.payments)
     check_benford(public.ledger, public.invoices)
 
