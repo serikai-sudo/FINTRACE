@@ -196,8 +196,14 @@ def _payment_rows_ok(
     policy: Policy,
     base_currency: CurrencyCode,
     fx_index: FxIndex,
+    check_amount: bool = True,
 ) -> bool:
-    """True if the payment journal matches the posting rule for ``side``."""
+    """True if the payment journal matches the posting rule for ``side``.
+
+    With ``check_amount`` False (an injected FX error on this journal) the structure is still
+    required: two rows, the right accounts, base currency, timestamp, invoice and entity; only the
+    converted amount is left unchecked.
+    """
     pair = _two_rows(rows)
     if pair is None:
         return False
@@ -212,17 +218,16 @@ def _payment_rows_ok(
         amount, currency = convert_minor(payment.amount_minor, rate, policy), base_currency
     debit, credit = pair
     expected = ("AP", "CASH") if side == "supplier" else ("CASH", "AR")
-    return all(
+    structure_ok = all(
         row.currency == currency
         and row.timestamp == payment.timestamp
         and row.invoice_id == invoice.invoice_id
         and row.entity_id == invoice.entity_id
         for row in pair
-    ) and (
-        debit.debit_minor == amount
-        and credit.credit_minor == amount
-        and (debit.account, credit.account) == expected
-    )
+    ) and (debit.account, credit.account) == expected
+    if not check_amount:
+        return structure_ok
+    return structure_ok and debit.debit_minor == amount and credit.credit_minor == amount
 
 
 def check_ledger_matches_documents(
@@ -239,7 +244,8 @@ def check_ledger_matches_documents(
     Misc (document-less) rows: never AP/AR, base currency only, EXPENSE/CASH/REVENUE only, and
     an entity_id, if present, belongs to a counterparty that has an invoice in the episode.
     The journal check is skipped for payments in ``ignore_ids`` (injected allocation errors);
-    their ledger rows still have to reference existing documents.
+    their ledger rows still have to reference existing documents. A payment journal whose rows
+    are in ``ignore_ids`` (injected FX error) keeps its structural check but not the amount one.
     """
     invoice_by_id = {invoice.invoice_id: invoice for invoice in invoices}
     payment_by_id = {payment.payment_id: payment for payment in payments}
@@ -293,8 +299,17 @@ def check_ledger_matches_documents(
         first_ref = payment.invoice_refs[0].invoice_id if payment.invoice_refs else None
         invoice = invoice_by_id.get(first_ref) if first_ref is not None else None
         rows = rows_by_payment.get(payment.payment_id, [])
+        # relaxed only when the whole journal was rewritten (an FX error touches both rows)
+        check_amount = not (rows and all(row.row_id in ignore_ids for row in rows))
         if invoice is None or not _payment_rows_ok(
-            payment, rows, invoice, side_of[invoice.invoice_id], policy, base_currency, fx_index
+            payment,
+            rows,
+            invoice,
+            side_of[invoice.invoice_id],
+            policy,
+            base_currency,
+            fx_index,
+            check_amount,
         ):
             bad_payments.append(payment.payment_id)
     if bad_payments:

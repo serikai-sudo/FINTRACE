@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import random
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from typing import Final, Protocol
 
@@ -27,6 +27,7 @@ from fintrace.models import (
     Invoice,
     Issue,
     IssueType,
+    LedgerRow,
     Payment,
     PrivateEpisode,
     ProvenanceEntry,
@@ -42,6 +43,8 @@ INJECTOR_ORDER: Final[tuple[IssueType, ...]] = (
 # ops that modify an existing document in place; the structural checks skip that document
 # (duplicate_invoice only adds records, which stay under the full clean contract)
 SOURCE_MODIFYING_OPS: Final[frozenset[str]] = frozenset({"payment_allocation"})
+# ProvenanceEntry.modified key: ids of records (ledger rows) whose amount checks are relaxed
+RELAXED_IDS_KEY: Final[str] = "relaxed_ids"
 _ISSUE_ID_MODULUS: Final[int] = 10_000  # ISS-0000 .. ISS-9999 (frozen ISSUE_ID_PATTERN)
 
 
@@ -120,7 +123,12 @@ def derive_issue_id(episode_id: str, source_id: str, taken: set[str]) -> str:
 
 
 def touched_ids(private: PrivateEpisode) -> set[str]:
-    """Ids already claimed by earlier issues: affected, created and source ids (membership)."""
+    """Ids already claimed by earlier issues (membership only).
+
+    Affected, created and source ids, plus the records whose amounts an injector rewrote
+    (``modified[RELAXED_IDS_KEY]``): those rows are exempt from the amount check, so no later
+    injector may build on them.
+    """
     ids: set[str] = set()
     for issue in private.truth.issues:
         ids.update(issue.affected_ids)
@@ -128,20 +136,71 @@ def touched_ids(private: PrivateEpisode) -> set[str]:
         ids.update(entry.created_ids)
         if entry.source_id is not None:
             ids.add(entry.source_id)
+        relaxed = entry.modified.get(RELAXED_IDS_KEY)
+        if isinstance(relaxed, list):
+            ids.update(str(item) for item in relaxed)
     return ids
 
 
 def inconsistent_ids(private: PrivateEpisode) -> frozenset[str]:
-    """Documents that injections deliberately made inconsistent (skipped by the clean checks).
+    """Records that injections deliberately made inconsistent (relaxed by the clean checks).
 
-    Only the ``source_id`` of ops in ``SOURCE_MODIFYING_OPS`` qualifies; every record another
-    injector created is still held to the full clean contract by ``validate_clean_history``.
+    Two routes: the ``source_id`` of ops in ``SOURCE_MODIFYING_OPS`` (a document rewritten in
+    place), and the ids an entry lists under ``modified[RELAXED_IDS_KEY]`` (ledger rows whose
+    amounts were rewritten). Every record another injector created is still held to the full
+    clean contract by ``validate_clean_history``.
     """
-    return frozenset(
-        entry.source_id
-        for entry in private.provenance.injections
-        if entry.op in SOURCE_MODIFYING_OPS and entry.source_id is not None
+    ids: set[str] = set()
+    for entry in private.provenance.injections:
+        if entry.op in SOURCE_MODIFYING_OPS and entry.source_id is not None:
+            ids.add(entry.source_id)
+        relaxed = entry.modified.get(RELAXED_IDS_KEY)
+        if isinstance(relaxed, list):
+            ids.update(str(item) for item in relaxed)
+    return frozenset(ids)
+
+
+def payment_journal_rows(public: PublicEpisode, payment_id: str) -> tuple[LedgerRow, ...]:
+    """The ledger rows tagged with ``payment_id``, sorted by row id."""
+    return tuple(
+        sorted((r for r in public.ledger if r.payment_id == payment_id), key=lambda r: r.row_id)
     )
+
+
+def pick_foreign_currency_payment(episode: PrivateEpisode, rng: random.Random) -> Payment:
+    """A clean foreign-currency payment whose base-currency journal no injection touched.
+
+    Eligible: currency other than base, clean shape (one allocation equal to the amount),
+    payment, document, invoice and journal rows outside ``touched_ids``, and exactly two journal
+    rows in base currency carrying one amount. Split payments stay eligible: each payment owns
+    its journal, and the conversion error lives there, not in the allocation. Candidates keep
+    canonical payment order.
+    """
+    public = episode.public
+    base = public.manifest.base_currency
+    touched = touched_ids(episode)
+    rows_by_payment: dict[str, list[LedgerRow]] = defaultdict(list)
+    for row in public.ledger:
+        if row.payment_id is not None:
+            rows_by_payment[row.payment_id].append(row)
+    candidates: list[Payment] = []
+    for payment in public.payments:
+        refs = payment.invoice_refs
+        if payment.currency == base or len(refs) != 1:
+            continue
+        if refs[0].allocated_minor != payment.amount_minor:
+            continue
+        if {payment.payment_id, payment.doc_id, refs[0].invoice_id} & touched:
+            continue
+        rows = rows_by_payment.get(payment.payment_id, [])
+        if len(rows) != 2 or any(r.currency != base or r.row_id in touched for r in rows):
+            continue
+        if len({r.debit_minor + r.credit_minor for r in rows}) != 1:
+            continue
+        candidates.append(payment)
+    if not candidates:
+        raise InjectorError("no eligible foreign-currency payment for an FX injection")
+    return rng.choice(candidates)
 
 
 def pick_eligible_payment(
@@ -241,6 +300,7 @@ def append_truth_and_provenance(
 
 __all__ = [
     "INJECTOR_ORDER",
+    "RELAXED_IDS_KEY",
     "SOURCE_MODIFYING_OPS",
     "Injector",
     "InjectorError",
@@ -250,7 +310,9 @@ __all__ = [
     "fresh_label",
     "inconsistent_ids",
     "invoice_side",
+    "payment_journal_rows",
     "pick_eligible_payment",
+    "pick_foreign_currency_payment",
     "shift_timestamp",
     "touched_ids",
     "used_labels",
