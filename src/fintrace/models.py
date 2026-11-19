@@ -1,7 +1,10 @@
 """Pydantic v2 data models: the frozen contract shared by every FINTRACE module.
 
-Money is ``int`` minor units or ``Decimal`` (FX rates) — never ``float``. Timestamps are ISO-8601
-strings with an explicit UTC offset (JSON-first; no ``datetime`` objects cross a model boundary).
+Money is strict ``int`` minor units (``MinorUnits``) or ``Decimal`` (FX rates) — never ``float``.
+Timestamps are ISO-8601 strings with an explicit UTC offset (JSON-first; no ``datetime`` objects
+cross a model boundary). Free-form payloads (``JsonObject``) accept JSON values only — no
+``Decimal``, ``set`` or ``tuple`` — and are immutable by convention: producers build them once
+from ``model_dump(mode="json")`` and never mutate them afterwards.
 ``PublicEpisode`` is all the agent may ever see; ``PrivateEpisode`` is evaluator-only.
 """
 
@@ -10,12 +13,14 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Any, Final, Literal, Self, TypeAlias
+from typing import Annotated, Final, Literal, Self, TypeAlias
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
+    StrictInt,
     StringConstraints,
     field_validator,
     model_validator,
@@ -32,7 +37,10 @@ from .constants import (
     MAX_FINDINGS,
     MAX_ID_CHARS,
     MAX_PAGE_SIZE,
+    MAX_STEPS,
     OPAQUE_ID_PATTERN,
+    REWARD_CLIP_MAX,
+    REWARD_CLIP_MIN,
     TIMEZONE_PATTERN,
     ErrorCode,
     IssueType,
@@ -64,21 +72,30 @@ OpaqueId: TypeAlias = Annotated[
 IssueId: TypeAlias = Annotated[str, StringConstraints(pattern=ISSUE_ID_PATTERN)]
 CurrencyCode: TypeAlias = Annotated[str, StringConstraints(pattern=CURRENCY_ISO4217_PATTERN)]
 AccountName: TypeAlias = Literal["AP", "AR", "CASH", "REVENUE", "EXPENSE", "FX_GAIN_LOSS"]
+MinorUnits: TypeAlias = Annotated[StrictInt, Field(ge=0)]  # money: no bool/float/str coercion
+NonNegInt: TypeAlias = Annotated[StrictInt, Field(ge=0)]  # counters and sizes
+StepCount: TypeAlias = Annotated[StrictInt, Field(ge=0, le=MAX_STEPS)]
+JsonObject: TypeAlias = dict[str, JsonValue]  # JSON-only payload (no Decimal / set / tuple)
 
 # ---------------------------------------------------------------- ISO-8601 validation
 
 _ISO8601_OFFSET_RE: Final[re.Pattern[str]] = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)$"
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?"
+    r"([+-](?:[01][0-9]|2[0-3]):[0-5][0-9]|Z)$"
 )
-_ISO8601_DATE_RE: Final[re.Pattern[str]] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_ISO8601_DATE_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
 def validate_iso8601_with_offset(v: str) -> str:
-    """Accept ``YYYY-MM-DDTHH:MM:SS[.f](±HH:MM|Z)``; a trailing ``Z`` becomes ``+00:00``."""
+    """Accept ``YYYY-MM-DDTHH:MM:SS[.f](±HH:MM|Z)``; ``Z`` and ``-00:00`` become ``+00:00``."""
     if _ISO8601_OFFSET_RE.fullmatch(v) is None:
         raise ValueError("timestamp must be ISO-8601 with an explicit UTC offset")
-    datetime.fromisoformat(v)  # calendar validity and offset range
-    return f"{v[:-1]}+00:00" if v.endswith("Z") else v
+    datetime.fromisoformat(v)  # calendar validity
+    if v.endswith("Z"):
+        return f"{v[:-1]}+00:00"
+    if v.endswith("-00:00"):
+        return f"{v[:-6]}+00:00"
+    return v
 
 
 def validate_iso8601_date(v: str) -> str:
@@ -120,7 +137,7 @@ class PolicyRounding(FrozenModel):
     """Rounding applied to converted amounts."""
 
     mode: RoundingMode
-    minor_unit_digits: int = Field(ge=0, le=6)
+    minor_unit_digits: int = Field(strict=True, ge=0, le=6)
     apply_to: Literal["converted_total", "per_line"]
 
 
@@ -141,8 +158,8 @@ class Manifest(FrozenModel):
     period_start: str
     period_end: str
     timezone: str = Field(pattern=TIMEZONE_PATTERN)
-    n_ledger_rows: int = Field(ge=0)
-    n_documents: int = Field(ge=0)
+    n_ledger_rows: NonNegInt
+    n_documents: NonNegInt
     rounding: Rounding
 
     @field_validator("period_start", "period_end")
@@ -157,8 +174,8 @@ class LedgerRow(FrozenModel):
     row_id: OpaqueId
     timestamp: str
     account: AccountName
-    debit_minor: int = Field(ge=0)
-    credit_minor: int = Field(ge=0)
+    debit_minor: MinorUnits
+    credit_minor: MinorUnits
     currency: CurrencyCode
     entity_id: OpaqueId | None
     invoice_id: OpaqueId | None
@@ -181,9 +198,9 @@ class LineItem(FrozenModel):
     """Invoice line; amount is derived from quantity and unit price."""
 
     desc: str = Field(max_length=256)
-    qty: int = Field(ge=1)
-    unit_minor: int = Field(ge=0)
-    amount_minor: int = Field(ge=0)
+    qty: int = Field(strict=True, ge=1)
+    unit_minor: MinorUnits
+    amount_minor: MinorUnits
 
     @model_validator(mode="after")
     def _amount_is_qty_times_unit(self) -> Self:
@@ -201,7 +218,7 @@ class Invoice(FrozenModel):
     issued_at: str
     due_at: str
     currency: CurrencyCode
-    total_minor: int = Field(ge=0)
+    total_minor: MinorUnits
     line_items: tuple[LineItem, ...]
 
     @field_validator("issued_at", "due_at")
@@ -220,7 +237,7 @@ class InvoiceAllocation(FrozenModel):
     """Portion of a payment allocated to one invoice."""
 
     invoice_id: OpaqueId
-    allocated_minor: int = Field(ge=0)
+    allocated_minor: MinorUnits
 
 
 class Payment(FrozenModel):
@@ -230,7 +247,7 @@ class Payment(FrozenModel):
     payment_id: OpaqueId
     timestamp: str
     currency: CurrencyCode
-    amount_minor: int = Field(ge=0)
+    amount_minor: MinorUnits
     invoice_refs: tuple[InvoiceAllocation, ...]
 
     @field_validator("timestamp")
@@ -240,12 +257,12 @@ class Payment(FrozenModel):
 
 
 class FXRate(FrozenModel):
-    """Daily exchange rate; the rate is an exact Decimal parsed from a string, never a float."""
+    """Daily FX rate; an exact Decimal parsed from a string (generator quantizes), never a float."""
 
     date: str
     source_currency: CurrencyCode
     target_currency: CurrencyCode
-    rate: Decimal = Field(gt=0)
+    rate: Decimal = Field(gt=0, max_digits=24, decimal_places=16)
 
     @field_validator("date")
     @classmethod
@@ -280,7 +297,7 @@ class Issue(FrozenModel):
     issue_id: IssueId
     type: IssueType
     affected_ids: tuple[OpaqueId, ...]
-    expected_amount_minor: int = Field(ge=0)
+    expected_amount_minor: MinorUnits
     currency: CurrencyCode
     acceptable_evidence_sets: tuple[tuple[OpaqueId, ...], ...]
     interacts_with: tuple[IssueId, ...] = ()
@@ -307,8 +324,8 @@ class ProvenanceEntry(FrozenModel):
     op: str
     source_id: OpaqueId | None
     created_ids: tuple[OpaqueId, ...]
-    original: dict[str, Any]
-    modified: dict[str, Any]
+    original: JsonObject
+    modified: JsonObject
     caused_by: tuple[str, ...]
     note: str | None = None
 
@@ -318,7 +335,7 @@ class Provenance(FrozenModel):
 
     generator_version: str
     seed_hash: str
-    history: tuple[dict[str, Any], ...]
+    history: tuple[JsonObject, ...]
     injections: tuple[ProvenanceEntry, ...]
 
 
@@ -329,6 +346,12 @@ class PrivateEpisode(FrozenModel):
     truth: Truth
     provenance: Provenance
 
+    @model_validator(mode="after")
+    def _same_episode(self) -> Self:
+        if self.truth.episode_id != self.public.manifest.episode_id:
+            raise ValueError("truth.episode_id must equal public.manifest.episode_id")
+        return self
+
 
 # ---------------------------------------------------------------- submission models
 
@@ -338,7 +361,7 @@ class Finding(StrictModel):
 
     type: IssueType
     affected_ids: list[OpaqueId] = Field(max_length=MAX_AFFECTED_IDS_PER_FINDING)
-    claimed_amount_minor: int = Field(ge=0)
+    claimed_amount_minor: MinorUnits
     currency: CurrencyCode
     evidence_ids: list[OpaqueId] = Field(max_length=MAX_EVIDENCE_IDS_PER_FINDING)
     explanation: str = Field(max_length=MAX_EXPLANATION_CHARS)
@@ -358,8 +381,8 @@ class ListRecordsArgs(StrictModel):
     """Arguments of the list_records tool."""
 
     table: TableName
-    cursor: str | None = None
-    limit: int = Field(default=MAX_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE)
+    cursor: OpaqueId | None = None
+    limit: int = Field(default=MAX_PAGE_SIZE, strict=True, ge=1, le=MAX_PAGE_SIZE)
 
 
 class GetRecordArgs(StrictModel):
@@ -391,17 +414,16 @@ class Action(StrictModel):
     """Single entry point of env.step(); args are discriminated by the environment."""
 
     tool: ToolName
-    args: dict[str, Any]
+    args: JsonObject
 
 
 # ---------------------------------------------------------------- observation / state models
 
 
 class Error(FrozenModel):
-    """Environment error; code only, message stays generic."""
+    """Environment error: a code and nothing else (no message, no details, no trace)."""
 
     code: ErrorCode
-    message: str = ""
 
 
 class ToolResult(FrozenModel):
@@ -409,10 +431,10 @@ class ToolResult(FrozenModel):
 
     ok: bool
     tool: ToolName
-    result: dict[str, Any] | None = None
+    result: JsonObject | None = None
     error: Error | None = None
-    steps_used: int = Field(ge=0)
-    steps_remaining: int = Field(ge=0)
+    steps_used: StepCount
+    steps_remaining: StepCount
 
     @model_validator(mode="after")
     def _result_xor_error(self) -> Self:
@@ -430,20 +452,34 @@ class EpisodeState(StrictModel):
     """Mutable per-episode counters owned by the environment."""
 
     episode_id: str = Field(pattern=EPISODE_ID_PATTERN)
-    step_count: int = 0
+    step_count: StepCount = 0
     submitted: bool = False
     terminated: bool = False
     truncated: bool = False
 
 
 class StepResult(FrozenModel):
-    """What env.step() returns; info is exactly {"max_steps", "version"} — never the seed."""
+    """Return value of env.step(); info holds exactly max_steps and version — never the seed."""
 
     observation: ToolResult
-    reward: float = 0.0
+    reward: float = Field(
+        default=0.0, allow_inf_nan=False, ge=REWARD_CLIP_MIN, le=REWARD_CLIP_MAX
+    )
     terminated: bool = False
     truncated: bool = False
-    info: dict[str, Any]
+    info: JsonObject
+
+    @field_validator("info")
+    @classmethod
+    def _info_exact_keys(cls, v: JsonObject) -> JsonObject:
+        if set(v) != {"max_steps", "version"}:
+            raise ValueError('info must contain exactly the keys "max_steps" and "version"')
+        max_steps, version = v["max_steps"], v["version"]
+        if isinstance(max_steps, bool) or not isinstance(max_steps, int):
+            raise ValueError("info.max_steps must be an int")
+        if not isinstance(version, str):
+            raise ValueError("info.version must be a str")
+        return v
 
 
 __all__ = [
@@ -462,10 +498,13 @@ __all__ = [
     "InvoiceAllocation",
     "Issue",
     "IssueId",
+    "JsonObject",
     "LedgerRow",
     "LineItem",
     "ListRecordsArgs",
     "Manifest",
+    "MinorUnits",
+    "NonNegInt",
     "Observation",
     "OpaqueId",
     "Payment",
@@ -478,6 +517,7 @@ __all__ = [
     "ProvenanceEntry",
     "PublicEpisode",
     "Rounding",
+    "StepCount",
     "StepResult",
     "StrictModel",
     "Submission",

@@ -3,12 +3,28 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import get_args
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
+import fintrace.models as models
+from fintrace.constants import (
+    ERROR_CODES,
+    ISSUE_TYPES,
+    ROUNDING_MODES,
+    TABLE_NAMES,
+    TOOL_NAMES,
+    ErrorCode,
+    IssueType,
+    RoundingMode,
+    TableName,
+    ToolName,
+)
 from fintrace.models import (
+    Action,
     CalculatorArgs,
+    EpisodeState,
     Error,
     Finding,
     FXRate,
@@ -16,13 +32,16 @@ from fintrace.models import (
     Issue,
     LedgerRow,
     LineItem,
+    ListRecordsArgs,
     Manifest,
     Payment,
     Policy,
+    PolicyPeriod,
     PrivateEpisode,
     Provenance,
     ProvenanceEntry,
     PublicEpisode,
+    StepResult,
     Submission,
     ToolResult,
     Truth,
@@ -157,34 +176,41 @@ def _public_episode() -> PublicEpisode:
     )
 
 
-def _private_episode() -> PrivateEpisode:
-    issue = Issue(
-        issue_id="ISS-01",
-        type="duplicate_invoice",
-        affected_ids=("INV-001", "INV-002"),
-        expected_amount_minor=125000,
-        currency="KZT",
-        acceptable_evidence_sets=(("INV-001", "INV-002"), ("DOC-INV-001", "DOC-INV-002")),
-    )
+def _issue(**over: object) -> Issue:
+    data: dict[str, object] = {
+        "issue_id": "ISS-01",
+        "type": "duplicate_invoice",
+        "affected_ids": ("INV-001", "INV-002"),
+        "expected_amount_minor": 125000,
+        "currency": "KZT",
+        "acceptable_evidence_sets": (("INV-001", "INV-002"), ("DOC-INV-001", "DOC-INV-002")),
+    }
+    data.update(over)
+    return Issue.model_validate(data)
+
+
+def _private_episode(**over: object) -> PrivateEpisode:
     entry = ProvenanceEntry(
         issue_id="ISS-01",
         op="duplicate_invoice",
         source_id="INV-001",
         created_ids=("INV-002",),
-        original={"invoice_id": "INV-001"},
-        modified={"invoice_id": "INV-002"},
+        original={"invoice_id": "INV-001", "total_minor": 125000},
+        modified={"invoice_id": "INV-002", "total_minor": 125000},
         caused_by=(),
     )
-    return PrivateEpisode(
-        public=_public_episode(),
-        truth=Truth(episode_id=EPISODE_ID, issues=(issue,)),
-        provenance=Provenance(
+    data: dict[str, object] = {
+        "public": _public_episode(),
+        "truth": Truth(episode_id=EPISODE_ID, issues=(_issue(),)),
+        "provenance": Provenance(
             generator_version="0.1.0",
             seed_hash="3f2a9c",
             history=({"event": "generate_base"}, {"event": "inject", "issue_id": "ISS-01"}),
             injections=(entry,),
         ),
-    )
+    }
+    data.update(over)
+    return PrivateEpisode.model_validate(data)
 
 
 def _finding(**over: object) -> dict[str, object]:
@@ -198,6 +224,18 @@ def _finding(**over: object) -> dict[str, object]:
     }
     data.update(over)
     return data
+
+
+def _tool_result(**over: object) -> ToolResult:
+    data: dict[str, object] = {
+        "ok": True,
+        "tool": "get_record",
+        "result": {"row_id": "L-0001"},
+        "steps_used": 1,
+        "steps_remaining": 99,
+    }
+    data.update(over)
+    return ToolResult.model_validate(data)
 
 
 # ---------------------------------------------------------------- Finding / Submission
@@ -229,7 +267,7 @@ def test_finding_explanation_capped() -> None:
         Finding.model_validate(_finding(explanation="x" * 1001))
 
 
-@pytest.mark.parametrize("currency", ["usd", "USDD", "US", "U$D", ""])
+@pytest.mark.parametrize("currency", ["usd", "USDD", "US", "U$D", "", "USD\n"])
 def test_finding_wrong_currency_pattern(currency: str) -> None:
     with pytest.raises(ValidationError, match="string_pattern_mismatch"):
         Finding.model_validate(_finding(currency=currency))
@@ -246,10 +284,19 @@ def test_submission_cap_30() -> None:
         Submission(episode_id=EPISODE_ID, findings=[_finding()] * 31)
 
 
-@pytest.mark.parametrize("episode_id", ["episode_1", "ep_", "ep_XYZ", "EP_0123456789ab"])
+@pytest.mark.parametrize(
+    "episode_id",
+    ["episode_1", "ep_", "ep_XYZ", "EP_0123456789ab", "ep_012345678", "ep_0123456789abcdef0"],
+)
 def test_submission_wrong_episode_id(episode_id: str) -> None:
     with pytest.raises(ValidationError, match="string_pattern_mismatch"):
         Submission(episode_id=episode_id, findings=[])
+
+
+def test_submission_episode_id_boundaries() -> None:
+    assert Submission(episode_id="ep_0123456789", findings=[]).episode_id == "ep_0123456789"
+    sixteen = "ep_0123456789abcdef"
+    assert Submission(episode_id=sixteen, findings=[]).episode_id == sixteen
 
 
 # ---------------------------------------------------------------- ledger / documents
@@ -276,6 +323,23 @@ def test_line_item_amount_mismatch() -> None:
         _line_item(amount_minor=99999)
 
 
+@pytest.mark.parametrize("bad", [125000.0, True, "125000"])
+def test_money_fields_are_strict_int(bad: object) -> None:
+    with pytest.raises(ValidationError, match="int_type"):
+        _ledger_row(debit_minor=bad)
+    with pytest.raises(ValidationError, match="int_type"):
+        Finding.model_validate(_finding(claimed_amount_minor=bad))
+    with pytest.raises(ValidationError, match="int_type"):
+        _line_item(qty=bad)
+
+
+def test_money_fields_reject_json_float() -> None:
+    with pytest.raises(ValidationError, match="int_type"):
+        LineItem.model_validate_json(
+            '{"desc":"x","qty":1,"unit_minor":100.0,"amount_minor":100}'
+        )
+
+
 def test_fx_rate_decimal_not_float() -> None:
     exact = Decimal("1.08420000000001")  # 15 significant digits, beyond float round-trip safety
     rate = _fx(rate=exact).rate
@@ -296,14 +360,38 @@ def test_fx_rate_decimal_not_float() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("bad", "error_type"),
+    [("1e400", "decimal_max_digits"), ("NaN", "finite_number"), ("0", "greater_than"),
+     ("-1", "greater_than")],
+)
+def test_fx_rate_bounds(bad: str, error_type: str) -> None:
+    with pytest.raises(ValidationError, match=error_type):
+        _fx(rate=bad)
+
+
 # ---------------------------------------------------------------- ISO-8601
 
 
 @pytest.mark.parametrize(
     "timestamp",
-    ["2026-02-03T10:15:00", "2026-02-03 10:15:00+05:00", "2026-02-03", "2026-02-30T10:15:00Z"],
+    ["2026-02-03T10:15:00", "2026-02-03 10:15:00+05:00", "2026-02-03", "2026-02-03T10:15:00 Z"],
 )
 def test_iso8601_rejects_no_offset(timestamp: str) -> None:
+    with pytest.raises(ValidationError, match="explicit UTC offset"):
+        _ledger_row(timestamp=timestamp)
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    [
+        "2026-02-30T10:15:00Z",  # invalid calendar date
+        "2026-02-03T10:15:00+24:00",  # offset hour out of range
+        "2026-02-03T10:15:00+05:60",  # offset minute out of range
+        "2026-02-03T10:15:00+" + chr(0x660) + chr(0x665) + ":00",  # non-ASCII digits
+    ],
+)
+def test_iso8601_rejects_invalid_calendar_or_offset(timestamp: str) -> None:
     with pytest.raises(ValidationError):
         _ledger_row(timestamp=timestamp)
 
@@ -312,6 +400,8 @@ def test_iso8601_accepts_z() -> None:
     assert _ledger_row(timestamp="2026-02-03T10:15:00Z").timestamp == "2026-02-03T10:15:00+00:00"
     with_fraction = _ledger_row(timestamp="2026-02-03T10:15:00.250Z").timestamp
     assert with_fraction == "2026-02-03T10:15:00.250+00:00"  # fraction digits preserved
+    minus_zero = _ledger_row(timestamp="2026-02-03T10:15:00-00:00").timestamp
+    assert minus_zero == "2026-02-03T10:15:00+00:00"
     assert _ledger_row(timestamp=TS).timestamp == TS
     assert _fx(date="2026-02-03").date == "2026-02-03"
     with pytest.raises(ValidationError, match="YYYY-MM-DD"):
@@ -322,48 +412,103 @@ def test_iso8601_accepts_z() -> None:
 
 
 def test_tool_result_ok_without_result() -> None:
-    assert ToolResult(ok=True, tool="get_record", result={}, steps_used=1, steps_remaining=99).ok
+    assert _tool_result().ok
     with pytest.raises(ValidationError, match="ok=True requires result"):
-        ToolResult(ok=True, tool="get_record", result=None, steps_used=1, steps_remaining=99)
+        _tool_result(result=None)
     with pytest.raises(ValidationError, match="ok=True requires result"):
-        ToolResult(
-            ok=True,
-            tool="get_record",
-            result={},
-            error=Error(code="NOT_FOUND"),
-            steps_used=1,
-            steps_remaining=99,
-        )
+        _tool_result(error=Error(code="NOT_FOUND"))
 
 
 def test_tool_result_err_with_result() -> None:
     err = Error(code="NOT_FOUND")
-    failed = ToolResult(ok=False, tool="get_record", error=err, steps_used=1, steps_remaining=99)
+    failed = _tool_result(ok=False, result=None, error=err)
     assert failed.error is err and failed.result is None
     with pytest.raises(ValidationError, match="ok=False requires error"):
-        ToolResult(
-            ok=False,
-            tool="get_record",
-            result={"x": 1},
-            error=None,
-            steps_used=1,
-            steps_remaining=99,
-        )
+        _tool_result(ok=False, result={"x": 1}, error=None)
     with pytest.raises(ValidationError, match="ok=False requires error"):
-        ToolResult(
-            ok=False,
-            tool="get_record",
-            result={"x": 1},
-            error=err,
-            steps_used=1,
-            steps_remaining=99,
-        )
+        _tool_result(ok=False, result={"x": 1}, error=err)
+    with pytest.raises(ValidationError, match="ok=False requires error"):
+        _tool_result(ok=False, result=None, error=None)
+
+
+def test_tool_result_steps_bounded() -> None:
+    assert _tool_result(steps_used=100, steps_remaining=0).steps_used == 100
+    with pytest.raises(ValidationError, match="less_than_equal"):
+        _tool_result(steps_used=101)
+    with pytest.raises(ValidationError, match="greater_than_equal"):
+        _tool_result(steps_remaining=-1)
+
+
+def test_error_is_code_only() -> None:
+    assert Error(code="NOT_FOUND").model_dump() == {"code": "NOT_FOUND"}
+    assert Error(code="NOT_FOUND").model_dump_json() == '{"code":"NOT_FOUND"}'
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        Error.model_validate({"code": "NOT_FOUND", "message": "Traceback (most recent call last)"})
+    with pytest.raises(ValidationError, match="literal_error"):
+        Error.model_validate({"code": "SOMETHING_ELSE"})
+
+
+def test_payload_fields_are_json_only() -> None:
+    assert Action(tool="calculator", args={"expression": "1+1"}).args == {"expression": "1+1"}
+    with pytest.raises(ValidationError, match="invalid-json-value"):
+        _tool_result(result={"rate": Decimal("1.5")})
+    with pytest.raises(ValidationError, match="invalid-json-value"):
+        _tool_result(result={"ids": {"a", "b"}})
+    with pytest.raises(ValidationError, match="invalid-json-value"):
+        Action(tool="submit", args={"findings": ("x",)})
 
 
 def test_calculator_args_200_char_limit() -> None:
     assert len(CalculatorArgs(expression="1+" * 100).expression) == 200
     with pytest.raises(ValidationError, match="string_too_long"):
         CalculatorArgs(expression="1" * 201)
+
+
+def test_list_records_args_bounded() -> None:
+    assert ListRecordsArgs(table="ledger").limit == 50
+    assert ListRecordsArgs(table="ledger", cursor="offset:50", limit=1).cursor == "offset:50"
+    with pytest.raises(ValidationError, match="string_too_long"):
+        ListRecordsArgs(table="ledger", cursor="c" * 65)
+    with pytest.raises(ValidationError, match="less_than_equal"):
+        ListRecordsArgs(table="ledger", limit=51)
+    with pytest.raises(ValidationError, match="int_type"):
+        ListRecordsArgs(table="ledger", limit="5")
+    with pytest.raises(ValidationError, match="literal_error"):
+        ListRecordsArgs(table="truth")
+
+
+# ---------------------------------------------------------------- step result / state
+
+
+def test_step_result_info_exact_keys_and_reward_bounds() -> None:
+    ok = StepResult(observation=_tool_result(), info={"max_steps": 100, "version": "1.0.0"})
+    assert ok.reward == 0.0 and ok.info == {"max_steps": 100, "version": "1.0.0"}
+    with pytest.raises(ValidationError, match="exactly the keys"):
+        StepResult(
+            observation=_tool_result(),
+            info={"max_steps": 100, "version": "1.0.0", "seed": 42},
+        )
+    with pytest.raises(ValidationError, match="exactly the keys"):
+        StepResult(observation=_tool_result(), info={"max_steps": 100})
+    with pytest.raises(ValidationError, match="max_steps must be an int"):
+        StepResult(observation=_tool_result(), info={"max_steps": True, "version": "1.0.0"})
+    with pytest.raises(ValidationError, match="version must be a str"):
+        StepResult(observation=_tool_result(), info={"max_steps": 100, "version": 1})
+    info = {"max_steps": 100, "version": "1.0.0"}
+    assert StepResult(observation=_tool_result(), reward=-1.0, info=info).reward == -1.0
+    with pytest.raises(ValidationError, match="finite_number"):
+        StepResult(observation=_tool_result(), reward=float("nan"), info=info)
+    with pytest.raises(ValidationError, match="less_than_equal"):
+        StepResult(observation=_tool_result(), reward=1.5, info=info)
+
+
+def test_episode_state_counters() -> None:
+    state = EpisodeState(episode_id=EPISODE_ID)
+    assert (state.step_count, state.submitted, state.terminated, state.truncated) == (0, 0, 0, 0)
+    with pytest.raises(ValidationError, match="greater_than_equal"):
+        EpisodeState(episode_id=EPISODE_ID, step_count=-5)
+    with pytest.raises(ValidationError, match="less_than_equal"):
+        EpisodeState(episode_id=EPISODE_ID, step_count=101)
 
 
 # ---------------------------------------------------------------- episode shapes
@@ -377,6 +522,7 @@ def test_public_episode_is_frozen() -> None:
         episode.ledger[0].debit_minor = 1  # type: ignore[misc]
     assert isinstance(episode.ledger, tuple)
     assert isinstance(episode.invoices[0].line_items, tuple)
+    assert hash(episode) == hash(_public_episode())  # frozen + tuples => hashable, value-based
 
 
 def test_private_episode_shape() -> None:
@@ -388,11 +534,68 @@ def test_private_episode_shape() -> None:
     assert isinstance(private.provenance.injections, tuple)
     assert private.public.manifest.episode_id == private.truth.episode_id
     with pytest.raises(ValidationError, match="sorted and unique"):
-        Issue(
-            issue_id="ISS-02",
-            type="fx_error",
-            affected_ids=("L-0002", "L-0001"),
-            expected_amount_minor=1,
-            currency="KZT",
-            acceptable_evidence_sets=(("L-0001",),),
+        _issue(issue_id="ISS-02", affected_ids=("L-0002", "L-0001"))
+    with pytest.raises(ValidationError, match="sorted and unique"):
+        _issue(issue_id="ISS-02", affected_ids=("L-0001", "L-0001"))
+    with pytest.raises(ValidationError, match=r"truth\.episode_id must equal"):
+        _private_episode(truth=Truth(episode_id="ep_ffffffffff", issues=()))
+
+
+def test_private_episode_json_round_trip() -> None:
+    private = _private_episode()
+    dumped = private.model_dump_json()
+    restored = PrivateEpisode.model_validate_json(dumped)
+    assert restored == private
+    assert restored.model_dump_json() == dumped
+    assert '"seed"' not in private.public.model_dump_json()
+
+
+# ---------------------------------------------------------------- patterns / schema / mirrors
+
+
+@pytest.mark.parametrize("bad_id", ["INV 001", "INV-001\n", "", "x" * 65, "INV/001"])
+def test_opaque_id_pattern_edges(bad_id: str) -> None:
+    with pytest.raises(ValidationError):
+        _ledger_row(row_id=bad_id)
+
+
+@pytest.mark.parametrize(
+    "bad_issue_id", ["ISS-1", "ISS-01\n", "ISS-" + chr(0x660) + chr(0x661), "iss-01"]
+)
+def test_issue_id_pattern_edges(bad_issue_id: str) -> None:
+    with pytest.raises(ValidationError, match="string_pattern_mismatch"):
+        _issue(issue_id=bad_issue_id)
+
+
+@pytest.mark.parametrize("tz", ["+05:00", "-03:30", "UTC", "Asia/Almaty", "Etc/GMT+5",
+                                "America/Argentina/Buenos_Aires"])
+def test_timezone_pattern_accepts(tz: str) -> None:
+    assert _manifest(timezone=tz).timezone == tz
+
+
+@pytest.mark.parametrize("tz", ["+99:99", "+05:60", "+5:00", "Almaty", "utc", "Asia/Almaty\n"])
+def test_timezone_pattern_rejects(tz: str) -> None:
+    with pytest.raises(ValidationError, match="string_pattern_mismatch"):
+        PolicyPeriod(
+            start_inclusive=True, end_exclusive=True, timezone=tz, assignment_field="issued_at"
         )
+
+
+def test_literal_aliases_match_tuple_mirrors() -> None:
+    assert get_args(IssueType) == ISSUE_TYPES
+    assert get_args(ErrorCode) == ERROR_CODES
+    assert get_args(ToolName) == TOOL_NAMES
+    assert get_args(TableName) == TABLE_NAMES
+    assert get_args(RoundingMode) == ROUNDING_MODES
+
+
+def test_every_model_generates_json_schema() -> None:
+    model_classes = [
+        obj
+        for obj in (getattr(models, name) for name in models.__all__)
+        if isinstance(obj, type) and issubclass(obj, BaseModel)
+    ]
+    assert len(model_classes) == 33  # 31 blueprint models + FrozenModel + StrictModel
+    for cls in model_classes:
+        schema = cls.model_json_schema()
+        assert schema.get("additionalProperties") is False, cls.__name__
