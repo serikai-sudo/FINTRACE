@@ -57,7 +57,7 @@ _LABEL_RESERVE: Final[dict[str, int]] = {"INV": 16, "DOC": 32, "PAY": 16, "J": 4
 _MODULE_BY_KIND: Final[dict[IssueType, str]] = {
     "duplicate_invoice": "duplicate",
     "payment_allocation": "payment",
-    "fx_error": "fx",
+    "fx_error": "fx_error",
     "period_misclassification": "period",
 }
 _EPISODE_ID_HEX: Final[int] = 12
