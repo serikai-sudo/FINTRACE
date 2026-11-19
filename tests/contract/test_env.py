@@ -9,6 +9,7 @@ import pytest
 from fintrace.constants import ENV_VERSION, EPISODE_ID_PATTERN, MAX_STEPS
 from fintrace.environment.env import FintraceEnv
 from fintrace.models import JsonObject, ToolResult
+from fintrace.reward.official import official_reward
 
 LIST_LEDGER_1: JsonObject = {
     "tool": "list_records",
@@ -206,7 +207,9 @@ def test_submit_terminates_episode() -> None:
     assert wrong[2] is False and not env.state.terminated
     observation, reward, terminated, truncated, info = _submit(env)
     assert observation.ok and observation.result == {"status": "accepted", "findings_count": 0}
-    assert reward == 0.0 and terminated is True and truncated is False  # matcher pending (step 6)
+    assert terminated is True and truncated is False
+    # clean books, empty submission -> F1 = 1; the failed submit counts as one inspection step
+    assert reward == official_reward(1.0, 1) == pytest.approx(0.998)
     assert env.state.submitted and env.state.terminated and env.state.step_count == 2
     assert info == {"max_steps": MAX_STEPS, "version": ENV_VERSION}
 
@@ -220,16 +223,19 @@ def test_truncation_at_100_steps() -> None:
     observation, reward, terminated, truncated, _ = env.step(LIST_LEDGER_1)
     assert observation.ok and observation.steps_used == MAX_STEPS
     assert observation.steps_remaining == 0
-    assert truncated is True and terminated is False and reward == 0.0
+    assert truncated is True and terminated is False
+    # truncation scores as an empty submission after MAX_STEPS: clean books -> F1 = 1 -> 0.8
+    assert reward == official_reward(1.0, MAX_STEPS) == pytest.approx(0.8)
     assert env.state.truncated and not env.state.submitted
     # an invalid action as the 100th step still truncates, with a code-only observation
     invalid_last = _env(seed=4)
     for _ in range(MAX_STEPS - 1):
         invalid_last.step(LIST_LEDGER_1)
-    observation, _, terminated, truncated, _ = invalid_last.step({"tool": "nonsense", "args": {}})
+    nonsense: JsonObject = {"tool": "nonsense", "args": {}}
+    observation, reward, terminated, truncated, _ = invalid_last.step(nonsense)
     assert observation.error is not None and observation.error.code == "INVALID_ACTION"
     assert (observation.steps_used, observation.steps_remaining) == (MAX_STEPS, 0)
-    assert (terminated, truncated) == (False, True)
+    assert (terminated, truncated) == (False, True) and reward == official_reward(1.0, MAX_STEPS)
     # a successful submit as the 100th step terminates instead of truncating
     submit_last = _env(seed=4)
     for _ in range(MAX_STEPS - 1):

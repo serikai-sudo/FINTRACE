@@ -1,14 +1,17 @@
 """FintraceEnv: reset/step loop over a PublicEpisode with the fixed five-tool API and a step budget.
 
-Contract (blueprint 6.1-6.5): ``reset(seed, config) -> (observation, info)``;
+Contract (blueprint 6.1-6.5, 7.4): ``reset(seed, config) -> (observation, info)``;
 ``step(action) -> (observation, reward, terminated, truncated, info)``; at most MAX_STEPS steps
-including submit; intermediate reward is always 0.0; submit terminates, the budget truncates;
-``info`` is always exactly ``{"max_steps", "version"}``. Tools read only the PublicEpisode; the
-PrivateEpisode is held for the evaluator-side matcher (step 6) and never reaches an observation.
+including submit; intermediate reward is always 0.0; submit terminates with the official reward
+of the matched submission, the budget truncates with the official reward of an empty submission
+at MAX_STEPS inspection steps; ``info`` is always exactly ``{"max_steps", "version"}``.
+Tools read only the PublicEpisode. The environment is the single place that touches the
+evaluator: truth is registered in a TruthStore at reset and read only on the terminal step.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import ClassVar, Final
 
 from fintrace.constants import (
@@ -18,26 +21,29 @@ from fintrace.constants import (
     REWARD_INTERMEDIATE,
     TOOL_NAMES,
 )
+from fintrace.evaluator.matcher import match
+from fintrace.evaluator.metrics import compute_metrics
+from fintrace.evaluator.truth_store import TruthStore
 from fintrace.generator.build import build_clean_episode
 from fintrace.models import (
     EpisodeConfig,
     EpisodeState,
+    Finding,
     JsonObject,
     PrivateEpisode,
     PublicEpisode,
     StepResult,
+    Submission,
     ToolName,
     ToolResult,
 )
+from fintrace.reward.official import official_reward
 from fintrace.tools.list_records import clear_cache
 from fintrace.tools.registry import dispatch, parse_action
-from fintrace.tools.submit import SUBMIT_PLACEHOLDER_REWARD
 
 from .observations import ResetObservation, build_error_result, step_info
 from .state import advance, finish, is_over, new_state
 
-# TODO(step-6): reward for a truncated episode = official reward of an empty submission.
-TRUNCATION_PLACEHOLDER_REWARD: Final[float] = 0.0
 _TOOL_BY_NAME: Final[dict[str, ToolName]] = {name: name for name in TOOL_NAMES}
 _NEUTRAL_TOOL: Final[ToolName] = "list_records"
 
@@ -66,6 +72,7 @@ class FintraceEnv:
         self._episode: PublicEpisode | None = None
         self._private: PrivateEpisode | None = None  # evaluator-side; never read by tools
         self._state: EpisodeState | None = None
+        self._truth_store = TruthStore()  # the only path from truth to the scorer
 
     @property
     def episode(self) -> PublicEpisode:
@@ -85,13 +92,17 @@ class FintraceEnv:
         The observation carries the public manifest and policy, the tool names and the step
         budget; ``info`` never contains the seed; nothing from truth/provenance is included.
         """
+        # build first: if generation fails, the previous episode and its truth stay intact
+        private = build_clean_episode(seed, config)
         if self._episode is not None:
             clear_cache(self._episode.manifest.episode_id)
-        private = build_clean_episode(seed, config)
+        if self._private is not None:
+            self._truth_store.clear(self._private.public.manifest.episode_id)
         public = private.public
         self._private = private
         self._episode = public
         self._state = new_state(public.manifest.episode_id)
+        self._truth_store.register(private.truth)
         observation = ResetObservation(
             result={
                 "manifest": public.manifest.model_dump(mode="json"),
@@ -114,17 +125,33 @@ class FintraceEnv:
         parsed = parse_action(action)
         if isinstance(parsed, str):
             observation = build_error_result(_tool_of(action), parsed, "rejected action", state)
-            self._truncate_if_exhausted(state)
-            return self._pack(observation, REWARD_INTERMEDIATE, state)
+            truncated = self._truncate_if_exhausted(state)
+            reward = self._truncation_reward() if truncated else REWARD_INTERMEDIATE
+            return self._pack(observation, reward, state)
         tool, args = parsed
         observation = dispatch(tool, args, state, episode)
         reward = REWARD_INTERMEDIATE
-        if tool == "submit" and observation.ok:
+        if tool == "submit" and observation.ok and isinstance(args, Submission):
             finish(state, submitted=True, truncated=False)
-            reward = SUBMIT_PLACEHOLDER_REWARD
+            # every earlier step was inspection, invalid actions and failed submits included
+            reward = self._terminal_reward(args.findings, inspection_steps=state.step_count - 1)
         elif self._truncate_if_exhausted(state):
-            reward = TRUNCATION_PLACEHOLDER_REWARD
+            reward = self._truncation_reward()
         return self._pack(observation, reward, state)
+
+    def _terminal_reward(self, findings: Sequence[Finding], inspection_steps: int) -> float:
+        """Official reward of ``findings`` against this episode's truth (evaluator side)."""
+        episode, _ = self._require_reset()
+        truth = self._truth_store.get(episode.manifest.episode_id)
+        if truth is None:
+            raise RuntimeError("no truth registered for the current episode")
+        tp, fp, fn = match(findings, truth.issues)
+        _, _, f1 = compute_metrics(tp, fp, fn)
+        return official_reward(f1, inspection_steps)
+
+    def _truncation_reward(self) -> float:
+        """Blueprint 7.4: a truncated episode scores as an empty submission after MAX_STEPS."""
+        return self._terminal_reward([], inspection_steps=MAX_STEPS)
 
     def _require_reset(self) -> tuple[PublicEpisode, EpisodeState]:
         if self._episode is None or self._state is None:
@@ -153,4 +180,4 @@ class FintraceEnv:
         return result.observation, result.reward, result.terminated, result.truncated, result.info
 
 
-__all__ = ["TRUNCATION_PLACEHOLDER_REWARD", "FintraceEnv"]
+__all__ = ["FintraceEnv"]
