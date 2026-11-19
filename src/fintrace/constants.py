@@ -17,6 +17,8 @@ MAX_AFFECTED_IDS_PER_FINDING: Final[int] = 20
 MAX_EXPLANATION_CHARS: Final[int] = 1000
 MAX_CALCULATOR_EXPR_CHARS: Final[int] = 200
 MAX_ID_CHARS: Final[int] = 64  # any opaque identifier (row, document, invoice, payment, cursor)
+MIN_LEDGER_ROWS: Final[int] = 200  # default lower bound of EpisodeConfig.n_ledger_rows_range
+MAX_LEDGER_ROWS: Final[int] = 2000  # default upper bound of EpisodeConfig.n_ledger_rows_range
 
 # ---------------------------------------------------------------- 3. Tolerance defaults
 DEFAULT_TOLERANCE_FRAC: Final[Decimal] = Decimal("0.001")  # 0.1 % relative tolerance on amounts
@@ -25,6 +27,12 @@ MIN_TOLERANCE_MINOR: Final[int] = 1  # absolute floor of the tolerance, in minor
 # ---------------------------------------------------------------- 4. Benford (blueprint 4.3)
 BENFORD_CHI_SQUARED_CRITICAL: Final[Decimal] = Decimal("15.507")  # p = 0.05, 8 degrees of freedom
 BENFORD_MIN_SAMPLE_SIZE: Final[int] = 100  # below this the Benford signal is not reported
+# Sampler shape: generated amounts live in decades 10**LO .. 10**HI major units (10 .. 100 000),
+# with a Pareto(alpha) upper tail. float on purpose: these are arguments of math.pow / math.log10
+# inside the sampler and are never stored — every emitted amount is an int in minor units.
+BENFORD_LO_EXPONENT: Final[float] = 1.0
+BENFORD_HI_EXPONENT: Final[float] = 5.0
+BENFORD_PARETO_ALPHA: Final[float] = 1.5
 
 # ---------------------------------------------------------------- 5. Reward (blueprint 7.4)
 # reward = clip(F1_COEF * F1 - F1_BIAS - STEP_COST * inspection_steps, CLIP_MIN, CLIP_MAX)
@@ -118,7 +126,10 @@ TRAJECTORIES_DIR: Final[Path] = Path("trajectories")
 
 __all__ = [
     "BENFORD_CHI_SQUARED_CRITICAL",
+    "BENFORD_HI_EXPONENT",
+    "BENFORD_LO_EXPONENT",
     "BENFORD_MIN_SAMPLE_SIZE",
+    "BENFORD_PARETO_ALPHA",
     "CONFIG_DIR",
     "CURRENCY_ISO4217_PATTERN",
     "DATA_DIR",
@@ -135,9 +146,11 @@ __all__ = [
     "MAX_EXPLANATION_CHARS",
     "MAX_FINDINGS",
     "MAX_ID_CHARS",
+    "MAX_LEDGER_ROWS",
     "MAX_PAGE_SIZE",
     "MAX_STEPS",
     "MINOR_UNIT_DIGITS_DEFAULT",
+    "MIN_LEDGER_ROWS",
     "MIN_TOLERANCE_MINOR",
     "OPAQUE_ID_PATTERN",
     "REWARD_CLIP_MAX",

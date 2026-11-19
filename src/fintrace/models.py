@@ -36,11 +36,14 @@ from .constants import (
     MAX_EXPLANATION_CHARS,
     MAX_FINDINGS,
     MAX_ID_CHARS,
+    MAX_LEDGER_ROWS,
     MAX_PAGE_SIZE,
     MAX_STEPS,
+    MIN_LEDGER_ROWS,
     OPAQUE_ID_PATTERN,
     REWARD_CLIP_MAX,
     REWARD_CLIP_MIN,
+    SCHEMA_VERSION,
     TIMEZONE_PATTERN,
     ErrorCode,
     IssueType,
@@ -482,11 +485,45 @@ class StepResult(FrozenModel):
         return v
 
 
+# ---------------------------------------------------------------- generator configuration
+
+
+class EpisodeConfig(FrozenModel):
+    """Configuration for generating one episode. Deterministic given (seed, config, VERSION)."""
+
+    schema_version: str = SCHEMA_VERSION
+    n_ledger_rows_range: tuple[int, int] = (MIN_LEDGER_ROWS, MAX_LEDGER_ROWS)
+    n_documents_range: tuple[int, int] = (20, 200)
+    n_entities_range: tuple[int, int] = (5, 30)
+    base_currency: CurrencyCode = "USD"
+    foreign_currencies: tuple[CurrencyCode, ...] = ("EUR", "GBP")
+    period_days: int = Field(default=90, ge=28, le=366)
+    timezone: str = Field(default="+05:00", pattern=TIMEZONE_PATTERN)
+    recurring_supplier_count: int = Field(default=3, ge=0, le=10)  # recurring suppliers = decoys
+    split_payment_rate: Decimal = Field(default=Decimal("0.15"), ge=Decimal("0"), le=Decimal("0.5"))
+    foreign_invoice_rate: Decimal = Field(
+        default=Decimal("0.20"), ge=Decimal("0"), le=Decimal("0.6")
+    )
+
+    @model_validator(mode="after")
+    def _consistent(self) -> Self:
+        for name in ("n_ledger_rows_range", "n_documents_range", "n_entities_range"):
+            lo, hi = getattr(self, name)
+            if not 1 <= lo <= hi:
+                raise ValueError(f"{name} must satisfy 1 <= lo <= hi")
+        if self.base_currency in self.foreign_currencies:
+            raise ValueError("base_currency must not appear in foreign_currencies")
+        if len(set(self.foreign_currencies)) != len(self.foreign_currencies):
+            raise ValueError("foreign_currencies must be unique")
+        return self
+
+
 __all__ = [
     "AccountName",
     "Action",
     "CalculatorArgs",
     "CurrencyCode",
+    "EpisodeConfig",
     "EpisodeState",
     "Error",
     "FXRate",
