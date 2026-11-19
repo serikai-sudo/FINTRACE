@@ -418,6 +418,8 @@ class Action(StrictModel):
 
     tool: ToolName
     args: JsonObject
+    # agent scratchpad, not a sixth tool: the environment ignores it, the trajectory logger keeps it
+    thought: str | None = Field(default=None, max_length=500)
 
 
 # ---------------------------------------------------------------- observation / state models

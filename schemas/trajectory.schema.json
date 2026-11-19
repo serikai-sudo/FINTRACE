@@ -36,7 +36,8 @@
           "type": "string",
           "enum": ["list_records", "get_record", "get_document", "calculator", "submit"]
         },
-        "args": {"type": "object"}
+        "args": {"type": "object"},
+        "thought": {"type": ["string", "null"], "maxLength": 500}
       }
     },
     "Error": {
