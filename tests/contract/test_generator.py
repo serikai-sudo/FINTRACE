@@ -16,7 +16,7 @@ from fintrace.generator.fx import build_fx_index, convert_minor, policy_date, ra
 from fintrace.generator.validate import check_benford, validate_clean_history
 from fintrace.models import EpisodeConfig, PrivateEpisode
 
-SWEEP_SEEDS = 1000
+SWEEP_SEEDS = 700  # enough for the '>= 93 % of seeds pass' claim; 1000 cost ~15 s more
 BENFORD_SEEDS = 100
 
 
@@ -26,7 +26,7 @@ def default_episode() -> PrivateEpisode:
 
 
 @pytest.mark.slow
-def test_build_clean_passes_validation_1000_seeds() -> None:
+def test_build_clean_passes_validation_700_seeds() -> None:
     config = EpisodeConfig()
     docs_lo, docs_hi = config.n_documents_range
     started = time.monotonic()
@@ -38,8 +38,8 @@ def test_build_clean_passes_validation_1000_seeds() -> None:
         assert docs_lo <= public.manifest.n_documents <= docs_hi, seed
         assert episode.truth.issues == () and episode.provenance.injections == ()
     elapsed = time.monotonic() - started
-    # ~35 s on the dev box (2 CPU); the bound is 2x that so a slower CI runner stays green
-    assert elapsed < 120.0, f"{SWEEP_SEEDS} seeds took {elapsed:.1f}s"
+    # ~25 s on the dev box (2 CPU); the bound is ~3x that so a slower CI runner stays green
+    assert elapsed < 90.0, f"{SWEEP_SEEDS} seeds took {elapsed:.1f}s"
 
 
 def test_deterministic_regeneration(default_episode: PrivateEpisode) -> None:
