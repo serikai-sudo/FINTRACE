@@ -21,7 +21,7 @@ import random
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Final
+from typing import Final, NamedTuple
 
 from fintrace.models import (
     AccountName,
@@ -55,6 +55,15 @@ _RECURRING_SHARE_DIVISOR: Final[int] = 6  # recurring invoices <= half of all in
 _DOCS_PER_INVOICE_TENTHS: Final[int] = 19  # expected documents per invoice ~ 1.9
 
 FxLookup = Callable[[str, CurrencyCode, CurrencyCode], Decimal]
+
+
+class CleanHistory(NamedTuple):
+    """Canonical documents and ledger of a clean episode plus the recurring-decoy series ids."""
+
+    invoices: tuple[Invoice, ...]
+    payments: tuple[Payment, ...]
+    ledger: tuple[LedgerRow, ...]
+    recurring_series: tuple[tuple[str, ...], ...]  # invoice ids per legitimate recurring series
 
 
 def _require(condition: bool, message: str) -> None:
@@ -385,13 +394,14 @@ def generate_clean_history(
     fx_rates: tuple[FXRate, ...],
     rng: random.Random,
     config: EpisodeConfig,
-) -> tuple[tuple[Invoice, ...], tuple[Payment, ...], tuple[LedgerRow, ...]]:
+) -> CleanHistory:
     """Phase 1 invoices (recurring + regular), phase 2 payments, phase 3 ledger + misc journals.
 
     Document and ledger-row counts land inside the configured ranges (documents are trimmed or
     topped up after phase 2; misc journals fill the ledger exactly). Deterministic given
     (company, fx_rates, rng, config); returned in canonical order (timestamp, id) with
-    sequential ids that build.py permutes afterwards.
+    sequential ids that build.py permutes afterwards. ``recurring_series`` lists the invoice
+    ids of each legitimate recurring series so injectors never pick a decoy as their source.
     """
     start = datetime.fromisoformat(company.period_start)
     end = datetime.fromisoformat(company.period_end)
@@ -422,11 +432,14 @@ def generate_clean_history(
     regular: list[Invoice] = []
     issued_at: dict[str, datetime] = {}
     side_of: dict[str, EntityKind] = {}
+    recurring_series: list[tuple[str, ...]] = []
     recurring_plan = zip(recurring_entities, services, totals[:n_recurring], strict=True)
     for entity, service, total in recurring_plan:
-        for invoice in _generate_recurring_series(
+        series = _generate_recurring_series(
             rng, entity, service, total, start, end, series_length, ids
-        ):
+        )
+        recurring_series.append(tuple(invoice.invoice_id for invoice in series))
+        for invoice in series:
             recurring.append(invoice)
             issued_at[invoice.invoice_id] = datetime.fromisoformat(invoice.issued_at)
             side_of[invoice.invoice_id] = entity.kind
@@ -525,7 +538,7 @@ def generate_clean_history(
     invoices.sort(key=lambda i: (i.issued_at, i.invoice_id))
     payments.sort(key=lambda p: (p.timestamp, p.payment_id))
     ledger.sort(key=lambda r: (r.timestamp, r.row_id))
-    return tuple(invoices), tuple(payments), tuple(ledger)
+    return CleanHistory(tuple(invoices), tuple(payments), tuple(ledger), tuple(recurring_series))
 
 
-__all__ = ["FxLookup", "generate_clean_history"]
+__all__ = ["CleanHistory", "FxLookup", "generate_clean_history"]

@@ -19,6 +19,8 @@ MAX_CALCULATOR_EXPR_CHARS: Final[int] = 200
 MAX_ID_CHARS: Final[int] = 64  # any opaque identifier (row, document, invoice, payment, cursor)
 MIN_LEDGER_ROWS: Final[int] = 200  # default lower bound of EpisodeConfig.n_ledger_rows_range
 MAX_LEDGER_ROWS: Final[int] = 2000  # default upper bound of EpisodeConfig.n_ledger_rows_range
+INJECTOR_MAX_RETRY_ATTEMPTS: Final[int] = 10  # inject retries before build_episode gives up
+INJECTOR_DUPLICATE_DATE_SHIFT_MAX_DAYS: Final[int] = 10  # duplicate issued 0..10 days later
 
 # ---------------------------------------------------------------- 3. Tolerance defaults
 DEFAULT_TOLERANCE_FRAC: Final[Decimal] = Decimal("0.001")  # 0.1 % relative tolerance on amounts
@@ -138,6 +140,8 @@ __all__ = [
     "ENV_VERSION",
     "EPISODE_ID_PATTERN",
     "ERROR_CODES",
+    "INJECTOR_DUPLICATE_DATE_SHIFT_MAX_DAYS",
+    "INJECTOR_MAX_RETRY_ATTEMPTS",
     "ISSUE_ID_PATTERN",
     "ISSUE_TYPES",
     "MAX_AFFECTED_IDS_PER_FINDING",

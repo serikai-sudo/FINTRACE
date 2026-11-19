@@ -24,7 +24,7 @@ from fintrace.constants import (
 from fintrace.evaluator.matcher import match
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.evaluator.truth_store import TruthStore
-from fintrace.generator.build import build_clean_episode
+from fintrace.generator.build import build_episode
 from fintrace.models import (
     EpisodeConfig,
     EpisodeState,
@@ -92,8 +92,9 @@ class FintraceEnv:
         The observation carries the public manifest and policy, the tool names and the step
         budget; ``info`` never contains the seed; nothing from truth/provenance is included.
         """
-        # build first: if generation fails, the previous episode and its truth stay intact
-        private = build_clean_episode(seed, config)
+        # build first: if generation fails, the previous episode and its truth stay intact;
+        # injectors run per config.errors (all zero -> clean episode, backward compatible)
+        private = build_episode(seed, config)
         if self._episode is not None:
             clear_cache(self._episode.manifest.episode_id)
         if self._private is not None:
