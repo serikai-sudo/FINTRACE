@@ -48,6 +48,9 @@ LINE_ITEM_DESCRIPTIONS: Final[tuple[str, ...]] = (
     "Audit fees", "Insurance premium", "Catering", "Warehouse storage", "Design services",
     "Translation services",
 )  # fmt: skip
+# public convention: a document whose every line starts with this prefix is a credit note and is
+# booked as the reversal of the original invoice (AP Dr / EXPENSE Cr, or REVENUE Dr / AR Cr)
+CREDIT_NOTE_PREFIX: Final[str] = "Refund: "
 RECURRING_SERVICES: Final[tuple[str, ...]] = (
     "Office rent", "Cloud hosting", "Equipment lease", "Insurance premium", "Security services",
     "Payroll software subscription", "Fleet lease", "Warehouse rent", "Telecom plan",
@@ -181,6 +184,7 @@ __all__ = [
     "ACCOUNTS",
     "COMPANY_STEMS",
     "COMPANY_SUFFIXES",
+    "CREDIT_NOTE_PREFIX",
     "DEFAULT_POLICY",
     "DEFAULT_ROUNDING",
     "ENTITY_STEMS",

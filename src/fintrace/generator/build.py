@@ -15,6 +15,7 @@ import hashlib
 import importlib
 import json
 import random
+from collections.abc import Sequence
 from decimal import Decimal
 from types import ModuleType
 from typing import Any, Final
@@ -35,7 +36,7 @@ from fintrace.models import (
 from .benford import derive_sub_rng
 from .company import DEFAULT_ROUNDING, generate_company
 from .fx import SUPPORTED_CURRENCIES, generate_all_fx_rates
-from .history import generate_clean_history
+from .history import DecoyGroup, generate_clean_history
 from .injectors.base import (
     INJECTOR_ORDER,
     InjectorError,
@@ -52,6 +53,7 @@ _ID_FIELDS_BY_KIND: Final[dict[str, tuple[str, ...]]] = {
     "payments": ("doc_id", "payment_id"),
     "ledger": ("row_id", "journal_id", "entity_id", "invoice_id", "payment_id"),
     "recurring": ("invoice_id",),
+    "decoys": ("id",),  # invoice or payment labels owned by a decoy group
 }
 # unused labels kept per family so that injected records can take an in-range label
 _LABEL_RESERVE: Final[dict[str, int]] = {"INV": 16, "DOC": 32, "PAY": 16, "J": 48, "L": 96}
@@ -93,7 +95,9 @@ def _sha256_hex(text: str) -> str:
 
 
 def _rng_key(seed: int, config: EpisodeConfig) -> str:
-    base_config = _canonical_json(config.model_dump(exclude={"errors"}))
+    # errors and decoys never enter the key: the clean base of a seed is one and the same
+    # whatever is injected or woven in afterwards
+    base_config = _canonical_json(config.model_dump(exclude={"errors", "decoys"}))
     return f"{ENV_VERSION}:{SCHEMA_VERSION}:{seed}:{base_config}"
 
 
@@ -182,6 +186,41 @@ def _permute_ids(payload: Payload, rng: random.Random) -> Payload:
     return payload
 
 
+def _decoy_events(payload: Payload, decoys: Sequence[DecoyGroup]) -> list[dict[str, Any]]:
+    """Provenance markers of the legitimate patterns, with every public id they own (permuted).
+
+    ``legitimate_pattern`` is what ``injectors.base.legitimate_pattern_ids`` keys on, so no
+    injector ever builds on a decoy document, journal or row.
+    """
+    invoice_doc = {row["invoice_id"]: row["doc_id"] for row in payload["invoices"]}
+    payment_doc = {row["payment_id"]: row["doc_id"] for row in payload["payments"]}
+    events: list[dict[str, Any]] = []
+    for k, group in enumerate(decoys):
+        labels = sorted(row["id"] for row in payload["decoys"] if row["group"] == k)
+        invoice_ids = [label for label in labels if label in invoice_doc]
+        payment_ids = [label for label in labels if label in payment_doc]
+        rows = [
+            row
+            for row in payload["ledger"]
+            if row["invoice_id"] in invoice_ids or row["payment_id"] in payment_ids
+        ]
+        events.append(
+            {
+                "event": f"generate_decoy_{group.op}",
+                "op": f"generate_decoy_{group.op}",
+                "legitimate_pattern": True,
+                "invoice_ids": invoice_ids,
+                "payment_ids": payment_ids,
+                "doc_ids": sorted(
+                    [*(invoice_doc[i] for i in invoice_ids), *(payment_doc[p] for p in payment_ids)]
+                ),
+                "journal_ids": sorted({row["journal_id"] for row in rows}),
+                "row_ids": sorted(row["row_id"] for row in rows),
+            }
+        )
+    return events
+
+
 def build_clean_episode(seed: int, config: EpisodeConfig | None = None) -> PrivateEpisode:
     """Deterministic seed + config -> validated clean PrivateEpisode (empty truth)."""
     config = config if config is not None else EpisodeConfig()
@@ -211,6 +250,11 @@ def build_clean_episode(seed: int, config: EpisodeConfig | None = None) -> Priva
             for k, series in enumerate(history.recurring_series)
             for invoice_id in series
         ],
+        "decoys": [
+            {"op": group.op, "group": k, "id": label}
+            for k, group in enumerate(history.decoys)
+            for label in (*group.invoice_ids, *group.payment_ids)
+        ],
     }
     payload = _permute_ids(payload, permute_rng)
     entity_of = {row["invoice_id"]: row["entity_id"] for row in payload["invoices"]}
@@ -225,6 +269,7 @@ def build_clean_episode(seed: int, config: EpisodeConfig | None = None) -> Priva
                 "invoice_ids": ids,
             }
         )
+    decoy_events = _decoy_events(payload, history.decoys)
 
     episode_id = _episode_id(
         {
@@ -275,6 +320,7 @@ def build_clean_episode(seed: int, config: EpisodeConfig | None = None) -> Priva
                 "n_fx_rates": len(fx_rates),
             },
             *recurring_events,
+            *decoy_events,
         ),
         injections=(),
     )
