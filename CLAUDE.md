@@ -73,6 +73,7 @@ architecture; extend existing files first.
 | `make data-dry`     | build both splits in memory and print the report JSON without writing |
 | `make demo`         | end-to-end demo episode (TODO)                                  |
 | `make baselines`    | run the 4 baselines (random, rule_based, mark_everything, oracle) on the dev split and write `docs/results_dev.md` |
+| `make trajectories` | record the 4 baselines × dev split as `trajectories/<policy>_dev_<seed>.jsonl` (one canonical JSON line per step, thoughts kept) and leak-scan every file; only `rule_based_dev_10000.jsonl` is committed as the demo sample |
 | `make attacks`      | run reward-hacking attack agents (TODO)                         |
 | `make oracle-gap`   | oracle vs. baseline gap report (TODO)                           |
 | `make clean`        | remove caches, build artifacts, `*.egg-info` (keeps `.venv`)    |

@@ -39,6 +39,7 @@ htmlcov/
 # `make data`): the jury must get them in a plain clone. Caches above (__pycache__, *.pyc) still
 # apply inside data/.
 trajectories/*.jsonl
+!trajectories/rule_based_dev_10000.jsonl
 data/.staging_*
 !data/train/
 !data/dev/

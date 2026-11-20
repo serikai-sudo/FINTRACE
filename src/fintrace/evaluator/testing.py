@@ -59,7 +59,7 @@ class OraclePolicy:
                 self._fetched.add(doc_id)
                 return document_action(doc_id, thought=f"oracle fetching evidence {doc_id}")
         return submit_action(
-            self._episode_id, self._findings, thought="oracle submitting exact truth"
+            self._episode_id, self._findings, thought="oracle submitting its prepared findings"
         )
 
 

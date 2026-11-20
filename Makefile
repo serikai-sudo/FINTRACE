@@ -2,7 +2,7 @@ PYTHON ?= python
 IMAGE  ?= fintrace:0.1.0
 
 # `data` is also a directory in the tree: it must stay .PHONY or make reports it "up to date".
-.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines attacks oracle-gap clean docker-build docker-run
+.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap clean docker-build docker-run
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt -e ".[dev]"
@@ -36,6 +36,9 @@ demo:
 
 baselines:
 	$(PYTHON) scripts/run_baselines.py --split dev
+
+trajectories:
+	$(PYTHON) scripts/record_trajectories.py --split dev
 
 attacks:
 	@echo "TODO"

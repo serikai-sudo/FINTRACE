@@ -25,6 +25,7 @@ from fintrace.evaluator.matcher import match
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.evaluator.truth_store import TruthStore
 from fintrace.generator.build import build_episode
+from fintrace.logging.trajectory import TrajectoryLogger
 from fintrace.models import (
     EpisodeConfig,
     EpisodeState,
@@ -73,6 +74,7 @@ class FintraceEnv:
         self._private: PrivateEpisode | None = None  # evaluator-side; never read by tools
         self._state: EpisodeState | None = None
         self._truth_store = TruthStore()  # the only path from truth to the scorer
+        self._logger: TrajectoryLogger | None = None  # optional per-episode JSONL transcript
 
     @property
     def episode(self) -> PublicEpisode:
@@ -95,6 +97,7 @@ class FintraceEnv:
         # build first: if generation fails, the previous episode and its truth stay intact;
         # injectors run per config.errors (all zero -> clean episode, backward compatible)
         private = build_episode(seed, config)
+        self._detach_logger()  # a logger belongs to one episode: never record the next one
         if self._episode is not None:
             clear_cache(self._episode.manifest.episode_id)
         if self._private is not None:
@@ -121,14 +124,14 @@ class FintraceEnv:
             observation = build_error_result(
                 _tool_of(action), "EPISODE_OVER", "episode already ended", state
             )
-            return self._pack(observation, REWARD_INTERMEDIATE, state)
+            return self._emit(action, observation, REWARD_INTERMEDIATE, state)
         advance(state)  # invalid actions consume budget too
         parsed = parse_action(action)
         if isinstance(parsed, str):
             observation = build_error_result(_tool_of(action), parsed, "rejected action", state)
             truncated = self._truncate_if_exhausted(state)
             reward = self._truncation_reward() if truncated else REWARD_INTERMEDIATE
-            return self._pack(observation, reward, state)
+            return self._emit(action, observation, reward, state)
         tool, args = parsed
         observation = dispatch(tool, args, state, episode)
         reward = REWARD_INTERMEDIATE
@@ -138,7 +141,35 @@ class FintraceEnv:
             reward = self._terminal_reward(args.findings, inspection_steps=state.step_count - 1)
         elif self._truncate_if_exhausted(state):
             reward = self._truncation_reward()
-        return self._pack(observation, reward, state)
+        return self._emit(action, observation, reward, state)
+
+    def attach_logger(self, logger: TrajectoryLogger) -> None:
+        """Record every following step of the current episode; closed on the terminal step."""
+        episode, _ = self._require_reset()
+        logger.open(episode.manifest.episode_id)  # validate the new logger first
+        self._detach_logger()
+        self._logger = logger
+
+    def _detach_logger(self) -> None:
+        if self._logger is not None:
+            self._logger.close()
+            self._logger = None
+
+    def _emit(
+        self, action: object, observation: ToolResult, reward: float, state: EpisodeState
+    ) -> tuple[ToolResult, float, bool, bool, JsonObject]:
+        """Pack the step and, with a logger attached, append it (and close on the terminal)."""
+        packed = self._pack(observation, reward, state)
+        if self._logger is not None:
+            observation, reward, terminated, truncated, _ = packed
+            try:
+                self._logger.log_step(action, observation, reward, terminated, truncated)
+            except Exception as exc:  # recording must never break a step
+                self._logger.abort(exc)  # the step contract (6.4/6.6) outranks the transcript
+                self._logger = None
+            if terminated or truncated:
+                self._detach_logger()
+        return packed
 
     def _terminal_reward(self, findings: Sequence[Finding], inspection_steps: int) -> float:
         """Official reward of ``findings`` against this episode's truth (evaluator side)."""
