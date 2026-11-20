@@ -23,6 +23,7 @@ dev = [
     "ruff==0.17.3",
     "jsonschema==4.26.0",
     "matplotlib==3.11.2",  # charts for `make attacks` / `make oracle-gap`; never shipped
+    "fpdf2==2.9.0",  # the Environment Card PDF (`make card`); pure Python, never shipped
 ]
 
 [tool.setuptools.dynamic]

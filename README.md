@@ -20,6 +20,7 @@ make attacks   # 20 reward-hack attackers on the dev split -> docs/reward_robust
 make oracle-gap # 24 policies x 5 error types -> docs/oracle_gap_report.md (+ heatmap)
 make ocel      # sample investigation as an OCEL 2.0 log -> docs/sample_ocel_log.json
 make docker-verify # build the image and run the jury protocol inside it offline (needs a Docker daemon)
+make card      # Environment Card from the committed artefacts -> docs/environment_card.{md,pdf}
 make demo      # end-to-end demo episode (TODO)
 ```
 
@@ -122,9 +123,10 @@ judge_adapter.score_episode("/tmp/ep", {"findings": [...]}, inspection_steps=1)
 - **D4 — CPU behaviour-cloning proof (planned).** `experiments/bc_proof/` holds only its own
   requirements file today; a small imitation learner trained on recorded trajectories, on CPU, is the
   next step and will never enter the shipped image.
-- **D5 — Environment Card (planned).** A one-page card (task, observation and action spaces, reward,
-  budgets, known limitations, intended use) is planned; until then this README and
-  [docs/design_note.md](docs/design_note.md) serve that purpose.
+- **D5 — Environment Card.** `make card` builds [docs/environment_card.md](docs/environment_card.md) and a
+  one-page [PDF](docs/environment_card.pdf) (task, observation and action spaces, reward, budgets, data,
+  metrics, intended use, limitations, reproducibility). Every metric is read from a committed artefact and
+  the card lists its source; a missing source fails the build instead of inventing a value.
 
 ## Enterprise pillars
 
@@ -166,6 +168,9 @@ scores submissions in an isolated evaluator, so that every reward is determinist
   `make docker-verify` command are documented for machines with a Docker daemon.
 - Dataset: 10 train + 10 dev episodes (`data/manifest.json`; seeds 1001–1012 and 10000–10012 with the
   infeasible seeds listed as skipped), 8 injected issues per episode, verified by `make data-verify`.
+- Environment Card ([docs/environment_card.md](docs/environment_card.md),
+  [PDF](docs/environment_card.pdf)): the one-page summary of all of the above with the source of every
+  number.
 
 ## License
 
