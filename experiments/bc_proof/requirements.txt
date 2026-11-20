@@ -1,6 +1,12 @@
-# Behaviour-cloning proof experiment ONLY.
-# - Never installed into the shipped Docker image.
-# - Never imported from src/ (enforced by ruff banned-api "torch" in pyproject.toml).
-# Install CPU wheels:
-#   pip install -r experiments/bc_proof/requirements.txt --index-url https://download.pytorch.org/whl/cpu
+# Behaviour-cloning proof experiment ONLY (experiments/bc_proof/).
+# - Never installed into the shipped Docker image (the image installs the root requirements.txt).
+# - Never imported from src/ (enforced by ruff banned-api "torch" in pyproject.toml and by
+#   tests/contract/test_bc_proof_isolation.py in the main suite).
+# Install into a dedicated venv (what `make bc-proof` does); the CPU wheel index is tried first and
+# PyPI is the fallback (its torch wheel carries CUDA libraries but runs on the CPU all the same):
+#   python3.11 -m venv experiments/bc_proof/.venv
+#   experiments/bc_proof/.venv/bin/pip install -e . -r experiments/bc_proof/requirements.txt \
+#       --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
 torch==2.15.0
+numpy==2.4.6
+matplotlib==3.11.2

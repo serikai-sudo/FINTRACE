@@ -563,9 +563,10 @@ def render_markdown(m: Metrics) -> str:
         "noise.",
         "- The NetworkX graph layer (`src/fintrace/graph/`) is declared in the architecture and "
         "not yet used; relationships in the OCEL export come from the public records directly.",
-        "- No learned policy is shipped (the CPU behaviour-cloning proof, D4, is planned); the "
-        "baselines are a rule-based auditor, a random investigator, a mark-everything attacker "
-        "and a truth-reading oracle.",
+        "- No learned policy is shipped: the baselines are a rule-based auditor, a random "
+        "investigator, a mark-everything attacker and a truth-reading oracle; the CPU behaviour-"
+        "cloning proof (D4, `experiments/bc_proof/`) predicts the expert's actions and claims no "
+        "rollout reward.",
         "- The rule-based baseline spends its whole step budget, so late allocation issues can be "
         f"missed by design (its mean on the {m['attacks']['split']} split is {x.rule_based_mean} "
         f"against the oracle's {x.oracle_mean}).",
@@ -676,7 +677,8 @@ def render_pdf(m: Metrics, out: Path) -> int:
         f"Synthetic data with {len(m['issue_types'])} error classes plus {x.n_scenarios} "
         "interacting scenarios; the NetworkX graph layer is declared but unused; no learned "
         "policy is shipped "
-        "(CPU behaviour-cloning proof planned); the rule-based baseline spends its whole step "
+        "(the CPU behaviour-cloning proof predicts expert actions only, no rollout reward); the "
+        "rule-based baseline spends its whole step "
         f"budget ({x.rule_based_mean} vs oracle {x.oracle_mean} on dev)."
     )
     heading("Reproducibility")
