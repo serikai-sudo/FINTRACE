@@ -21,6 +21,7 @@ MIN_LEDGER_ROWS: Final[int] = 200  # default lower bound of EpisodeConfig.n_ledg
 MAX_LEDGER_ROWS: Final[int] = 2000  # default upper bound of EpisodeConfig.n_ledger_rows_range
 INJECTOR_MAX_RETRY_ATTEMPTS: Final[int] = 10  # inject retries before build_episode gives up
 INJECTOR_DUPLICATE_DATE_SHIFT_MAX_DAYS: Final[int] = 10  # duplicate issued 0..10 days later
+TIME_BUDGET_SECONDS: Final[float] = 60.0  # wall-clock safety timeout per episode (jury C18)
 
 # ---------------------------------------------------------------- 3. Tolerance defaults
 DEFAULT_TOLERANCE_FRAC: Final[Decimal] = Decimal("0.001")  # 0.1 % relative tolerance on amounts
@@ -168,6 +169,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "TABLE_NAMES",
     "TIMEZONE_PATTERN",
+    "TIME_BUDGET_SECONDS",
     "TOOL_NAMES",
     "TRAJECTORIES_DIR",
     "ErrorCode",

@@ -11,6 +11,7 @@ evaluator: truth is registered in a TruthStore at reset and read only on the ter
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 from typing import ClassVar, Final
 
@@ -19,6 +20,7 @@ from fintrace.constants import (
     MAX_PAGE_SIZE,
     MAX_STEPS,
     REWARD_INTERMEDIATE,
+    TIME_BUDGET_SECONDS,
     TOOL_NAMES,
 )
 from fintrace.evaluator.matcher import match
@@ -75,6 +77,8 @@ class FintraceEnv:
         self._state: EpisodeState | None = None
         self._truth_store = TruthStore()  # the only path from truth to the scorer
         self._logger: TrajectoryLogger | None = None  # optional per-episode JSONL transcript
+        # wall-clock safety deadline (time.monotonic); never part of the state or any output
+        self._deadline: float | None = None
 
     @property
     def episode(self) -> PublicEpisode:
@@ -97,6 +101,17 @@ class FintraceEnv:
         # build first: if generation fails, the previous episode and its truth stay intact;
         # injectors run per config.errors (all zero -> clean episode, backward compatible)
         private = build_episode(seed, config)
+        return self._load(private), step_info()
+
+    def reset_loaded(self, private: PrivateEpisode) -> ResetObservation:
+        """Start an episode from a prebuilt ``PrivateEpisode`` (the jury's closed mode).
+
+        Same setup as ``reset`` without generation: the episode keeps its id, the truth goes to
+        the evaluator-side store only, the step and time budgets start afresh.
+        """
+        return self._load(private)
+
+    def _load(self, private: PrivateEpisode) -> ResetObservation:
         self._detach_logger()  # a logger belongs to one episode: never record the next one
         if self._episode is not None:
             clear_cache(self._episode.manifest.episode_id)
@@ -107,7 +122,8 @@ class FintraceEnv:
         self._episode = public
         self._state = new_state(public.manifest.episode_id)
         self._truth_store.register(private.truth)
-        observation = ResetObservation(
+        self._deadline = time.monotonic() + TIME_BUDGET_SECONDS
+        return ResetObservation(
             result={
                 "manifest": public.manifest.model_dump(mode="json"),
                 "policy": public.policy.model_dump(mode="json"),
@@ -115,7 +131,6 @@ class FintraceEnv:
                 "budget": {"steps_remaining": MAX_STEPS},
             }
         )
-        return observation, step_info()
 
     def step(self, action: object) -> tuple[ToolResult, float, bool, bool, JsonObject]:
         """Apply one action. Every call after the episode ended is an EPISODE_OVER no-op."""
@@ -126,6 +141,13 @@ class FintraceEnv:
             )
             return self._emit(action, observation, REWARD_INTERMEDIATE, state)
         advance(state)  # invalid actions consume budget too
+        if self._deadline is not None and time.monotonic() >= self._deadline:
+            # wall-clock safety timeout (6.6 / jury C18): a hung run is truncated exactly like
+            # step exhaustion, with the same fixed empty-submission reward, so a well-behaved
+            # run never observes it and seed determinism holds
+            finish(state, submitted=False, truncated=True)
+            observation = build_error_result(_tool_of(action), "EPISODE_OVER", "time budget", state)
+            return self._emit(action, observation, self._truncation_reward(), state)
         parsed = parse_action(action)
         if isinstance(parsed, str):
             observation = build_error_result(_tool_of(action), parsed, "rejected action", state)

@@ -18,7 +18,7 @@ RUN /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
 FROM ${PYTHON_BASE} AS runtime
 
 ENV PATH="/opt/venv/bin:${PATH}" \
-    PYTHONPATH="/app/src" \
+    PYTHONPATH="/app/src:/app" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     MPLBACKEND=Agg
@@ -29,9 +29,11 @@ COPY --from=builder /opt/venv /opt/venv
 
 WORKDIR /app
 COPY src/ /app/src/
+# the jury's connection protocol: `import judge_adapter` from /app
+COPY judge_adapter.py /app/judge_adapter.py
 # Precompile once at build time: PYTHONDONTWRITEBYTECODE + read-only /app would otherwise
 # recompile the package on every container start.
-RUN python -m compileall -q /app/src
+RUN python -m compileall -q /app/src /app/judge_adapter.py
 
 USER fintrace
 

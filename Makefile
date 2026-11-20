@@ -17,7 +17,7 @@ test-all:
 	$(PYTHON) -m pytest -m ""
 
 lint:
-	$(PYTHON) -m ruff check src/ tests/ scripts/
+	$(PYTHON) -m ruff check src/ tests/ scripts/ judge_adapter.py
 
 schemas:
 	$(PYTHON) scripts/generate_schemas.py

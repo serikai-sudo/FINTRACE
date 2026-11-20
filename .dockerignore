@@ -3,6 +3,7 @@
 *
 !requirements.txt
 !src/
+!judge_adapter.py
 **/__pycache__
 **/*.py[cod]
 **/*.egg-info
