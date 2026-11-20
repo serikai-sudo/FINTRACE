@@ -34,10 +34,20 @@ htmlcov/
 .ipynb_checkpoints/
 .DS_Store
 
-# --- FINTRACE generated artifacts (never commit episode data) ---
+# --- FINTRACE artifacts ---
+# Trajectories are never committed. The 20 episodes under data/ ARE committed (regenerate with
+# `make data`): the jury must get them in a plain clone. Caches above (__pycache__, *.pyc) still
+# apply inside data/.
 trajectories/*.jsonl
-data/train/*.json*
-data/dev/*.json*
+data/.staging_*
+!data/train/
+!data/dev/
+!data/**/*.json
+!data/**/*.jsonl
+!data/**/*.csv
+!data/**/*.sha256
+!data/**/*.txt
+!data/manifest.json
 
 # Keep directory placeholders
 !.gitkeep
