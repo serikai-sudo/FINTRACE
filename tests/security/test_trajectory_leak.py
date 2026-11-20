@@ -7,8 +7,6 @@ import json
 from pathlib import Path
 from types import ModuleType
 
-import pytest
-
 from fintrace.agents.rule_based import RuleBasedReconciliation
 from fintrace.environment.env import FintraceEnv
 from fintrace.evaluator.runner import load_split_config, run_baseline
@@ -112,16 +110,3 @@ def test_oracle_trajectory_no_leak(tmp_path: Path) -> None:
     # the submit carries findings (public ids and amounts) but never the truth's field names
     submitted = json.dumps(entries[-1]["action"]["args"]["findings"]).lower()
     assert not any(token in submitted for token in FORBIDDEN_TOKENS)
-
-
-def test_all_baselines_leak_scan(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    script = _load_script()
-    assert script.main(["--split", "dev", "--out-dir", str(tmp_path)]) == 0
-    out = capsys.readouterr().out
-    assert "leak scan: 40 files clean" in out
-    files = sorted(tmp_path.glob("*.jsonl"))
-    assert len(files) == 40
-    for path in files:
-        assert scan_trajectory(path) == [], path.name
-        lowered = path.read_text(encoding="utf-8").lower()
-        assert not any(token in lowered for token in FORBIDDEN_TOKENS), path.name

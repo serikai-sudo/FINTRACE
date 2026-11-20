@@ -17,6 +17,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from jsonschema import Draft202012Validator
+
+from fintrace.agents.base import THOUGHT_MAX_CHARS
 from fintrace.constants import (
     EPISODE_ID_PATTERN,
     ERROR_CODES,
@@ -33,6 +36,7 @@ from fintrace.constants import (
     SCHEMAS_DIR,
     TOOL_NAMES,
 )
+from fintrace.logging.trajectory import ENTRY_FIELDS
 from fintrace.models import Action, Error, StepResult, Submission, ToolResult
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -170,35 +174,76 @@ def test_submission_schema_enforces_caps() -> None:
 
 
 def test_trajectory_schema_consistent_with_constants_and_models() -> None:
+    """One JSONL line per env.step: the TrajectoryLogger entry, pinned to constants and models."""
     schema = _schema("trajectory")
-    defs = schema["$defs"]
-    assert schema["properties"]["episode_id"]["pattern"] == EPISODE_ID_PATTERN
-    assert schema["properties"]["steps"]["maxItems"] == MAX_STEPS
-    assert defs["Action"]["properties"]["tool"]["enum"] == list(TOOL_NAMES)
-    assert defs["Observation"]["properties"]["tool"]["enum"] == list(TOOL_NAMES)
-    assert defs["Error"]["properties"]["code"]["enum"] == list(ERROR_CODES)
-    for reward in (schema["properties"]["final_reward"], defs["Step"]["properties"]["reward"]):
-        assert (reward["minimum"], reward["maximum"]) == (REWARD_CLIP_MIN, REWARD_CLIP_MAX)
+    props = schema["properties"]
+    assert schema["additionalProperties"] is False
+    assert sorted(schema["required"]) == sorted(props) == list(ENTRY_FIELDS)
+    assert props["episode_id"]["pattern"] == EPISODE_ID_PATTERN
+    assert (props["step"]["minimum"], props["step"]["maximum"]) == (1, MAX_STEPS)
+    # the action is recorded as sent; only a successful step pins it to a well-formed tool call
+    assert props["action"] == {"type": "object"}
+    assert schema["if"] == {"properties": {"observation": {"properties": {"ok": {"const": True}}}}}
+    assert schema["then"] == {"properties": {"action": {"$ref": "#/$defs/ValidAction"}}}
+    action, observation = schema["$defs"]["ValidAction"], props["observation"]
+    assert action["additionalProperties"] is False and action["required"] == ["tool", "args"]
+    assert set(action["properties"]) == set(Action.model_fields)
+    assert action["properties"]["tool"]["enum"] == list(TOOL_NAMES)
+    assert action["properties"]["thought"]["maxLength"] == THOUGHT_MAX_CHARS
+    assert observation["additionalProperties"] is False
+    observation_fields = set(ToolResult.model_fields)
+    assert set(observation["properties"]) == set(observation["required"]) == observation_fields
+    assert observation["properties"]["tool"]["enum"] == list(TOOL_NAMES)
+    error = observation["properties"]["error"]
+    assert error["type"] == ["object", "null"]
+    assert set(error["properties"]) == set(Error.model_fields)
+    assert error["properties"]["code"]["enum"] == list(ERROR_CODES)
     for counter in ("steps_used", "steps_remaining"):
-        assert defs["Observation"]["properties"][counter]["maximum"] == MAX_STEPS
-    assert defs["Step"]["properties"]["step_index"]["maximum"] == MAX_STEPS - 1
-    # pinned to the models: same field names as Action / ToolResult / Error / StepResult
-    assert set(defs["Action"]["properties"]) == set(Action.model_fields)
-    assert set(defs["Observation"]["properties"]) == set(ToolResult.model_fields)
-    assert set(defs["Error"]["properties"]) == set(Error.model_fields) == {"code"}
-    step_fields = set(defs["Step"]["properties"]) - {"step_index", "action"}
-    assert step_fields == set(StepResult.model_fields)
-    assert sorted(defs["Info"]["properties"]) == sorted(defs["Info"]["required"])
-    assert sorted(defs["Info"]["required"]) == ["max_steps", "version"]
-    # ok <=> result present and error null (ToolResult invariant), expressed as if/then/else
-    assert defs["Observation"]["if"] == {"properties": {"ok": {"const": True}}}
-    assert defs["Observation"]["then"]["properties"]["error"] == {"type": "null"}
-    assert defs["Observation"]["else"]["properties"]["result"] == {"type": "null"}
-    # no private-episode surface besides the explicitly labelled, optional `metrics`
-    assert "metrics" not in schema["required"]
+        assert observation["properties"][counter]["maximum"] == MAX_STEPS
+    reward = props["reward"]
+    assert (reward["minimum"], reward["maximum"]) == (REWARD_CLIP_MIN, REWARD_CLIP_MAX)
+    # the step record is exactly the environment's StepResult minus `info`, plus the action
+    assert set(props) - {"episode_id", "step", "action"} == set(StepResult.model_fields) - {"info"}
     lowered = _raw("trajectory").decode("utf-8").lower()
-    for forbidden in ("seed", "provenance", "expected_amount", "issue_id", "acceptable_evidence"):
+    private_words = (
+        "seed", "provenance", "expected_amount", "issue_id", "acceptable_evidence", "metric",
+    )  # fmt: skip
+    for forbidden in private_words:
         assert forbidden not in lowered, forbidden
+
+
+def test_trajectory_sample_lines_validate() -> None:
+    """Every line of every committed trajectory file is an instance of the schema."""
+    schema = _schema("trajectory")
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
+    files = sorted((REPO_ROOT / "trajectories").glob("*.jsonl"))
+    assert files, "run `make trajectories`: the demo sample must be present"
+    checked = 0
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        assert text.endswith("\n"), path.name
+        for line in text.splitlines():
+            validator.validate(json.loads(line))
+            checked += 1
+    assert checked >= 100
+    bad = {"episode_id": "ep_00", "step": 0, "action": {}, "observation": {}, "reward": 2}
+    assert len(list(validator.iter_errors(bad))) >= 4
+    # a rejected step keeps the agent's junk action; a successful step must carry a valid call
+    rejected = {
+        "episode_id": "ep_0123456789ab", "step": 1, "reward": 0.0, "terminated": False,
+        "truncated": False, "action": {"invalid_action": "str"},
+        "observation": {
+            "ok": False, "tool": "list_records", "result": None,
+            "error": {"code": "INVALID_ACTION"}, "steps_used": 1, "steps_remaining": 99,
+        },
+    }  # fmt: skip
+    validator.validate(rejected)
+    ok_observation = {**rejected["observation"], "ok": True, "error": None, "result": {}}
+    accepted = {**rejected, "observation": ok_observation}
+    assert list(validator.iter_errors(accepted))  # junk action on an ok step is a schema violation
+    accepted["action"] = {"tool": "list_records", "args": {"table": "ledger"}, "thought": None}
+    validator.validate(accepted)
 
 
 def test_ocel_schema_structure() -> None:

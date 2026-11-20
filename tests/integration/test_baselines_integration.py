@@ -24,10 +24,12 @@ def _load_script() -> ModuleType:
 
 
 @pytest.mark.slow
-def test_all_four_baselines_run_on_dev_split() -> None:
-    stats = {
-        name: summarize(run_split(factory, "dev")) for name, factory in BASELINE_FACTORIES.items()
-    }
+def test_baselines_dev_split_and_results_md(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """One full dev run of the four baselines: ordering sanity, and the committed results_dev.md."""
+    results = {name: run_split(factory, "dev") for name, factory in BASELINE_FACTORIES.items()}
+    stats = {name: summarize(rows) for name, rows in results.items()}
     assert all(s["n"] == 10 for s in stats.values())
     assert stats["oracle"]["min_reward"] > 0.9
     assert stats["oracle"]["mean_reward"] > stats["rule_based"]["mean_reward"] > 0.0
@@ -35,16 +37,9 @@ def test_all_four_baselines_run_on_dev_split() -> None:
     assert stats["random"]["max_reward"] <= 0.0
     assert stats["mark_everything"]["max_reward"] < -0.9
     assert all(s["mean_steps"] <= 100 for s in stats.values())
-
-
-@pytest.mark.slow
-def test_results_dev_md_generated(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # the committed report is exactly what this run renders (no second run needed)
     script = _load_script()
-    out = tmp_path / "results_dev.md"
-    assert script.main(["--split", "dev", "--out", str(out)]) == 0
-    stdout = capsys.readouterr().out
-    assert "rule_based" in stdout and "wrote" in stdout
-    text = out.read_text(encoding="utf-8")
+    text = script.render_markdown("dev", results, script.config_hash(REPO_ROOT / "config"))
     assert text.startswith("# Baseline results: dev split")
     for section in ("## Summary", "## Reward per episode", "## Steps per episode"):
         assert section in text
@@ -53,4 +48,10 @@ def test_results_dev_md_generated(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert text.count(header) == 2
     assert text.count("| 10000 | ep_") == 2  # first dev seed in both per-episode tables
     assert RESULTS_DEV.is_file(), "run `make baselines` and commit docs/results_dev.md"
-    assert RESULTS_DEV.read_bytes() == out.read_bytes(), "results_dev.md drifted: make baselines"
+    assert RESULTS_DEV.read_text(encoding="utf-8") == text, "results_dev.md drifted: make baselines"
+    # the CLI itself, on one episode: writes the file and reports on stdout
+    out = tmp_path / "results_dev.md"
+    assert script.main(["--split", "dev", "--seeds", "1", "--out", str(out)]) == 0
+    stdout = capsys.readouterr().out
+    assert "rule_based" in stdout and "wrote" in stdout
+    assert out.read_text(encoding="utf-8").count("| 10000 | ep_") == 2

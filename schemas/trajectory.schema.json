@@ -1,65 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:fintrace:schema:trajectory:1.0.0",
-  "title": "Trajectory",
-  "description": "One agent trajectory for one episode (one JSONL line in trajectories/): the agent-visible transcript (actions, observations, rewards) plus optional evaluator-side `metrics`. `metrics` are labels derived from the hidden ground truth — strip them before feeding trajectories to any agent.",
+  "title": "FINTRACE trajectory step (one line of a trajectories/*.jsonl file)",
+  "description": "A single step record. Each line of a trajectory JSONL file is a self-contained JSON object conforming to this schema: the action the agent sent (optional `thought` included), the observation the environment returned, and the step's reward and end flags. The action is recorded as sent; on a successful step (`observation.ok`) it is a well-formed tool call (`$defs/ValidAction`), on a rejected step it may be any object. Nothing from the hidden episode (ground truth, injections, generator inputs, scoring diagnostics) is ever part of a line.",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "env_version",
-    "episode_id",
-    "agent",
-    "steps",
-    "final_reward",
-    "terminated",
-    "truncated"
-  ],
+  "required": ["episode_id", "step", "action", "observation", "reward", "terminated", "truncated"],
   "properties": {
-    "schema_version": {"type": "string"},
-    "env_version": {"type": "string"},
     "episode_id": {"type": "string", "pattern": "^ep_[0-9a-f]{10,16}$"},
-    "agent": {"type": "string", "maxLength": 64},
-    "steps": {"type": "array", "maxItems": 100, "items": {"$ref": "#/$defs/Step"}},
-    "final_reward": {"type": "number", "minimum": -1.0, "maximum": 1.0},
-    "terminated": {"type": "boolean"},
-    "truncated": {"type": "boolean"},
-    "metrics": {"$ref": "#/$defs/Metrics"}
-  },
-  "$defs": {
-    "Action": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["tool", "args"],
-      "properties": {
-        "tool": {
-          "type": "string",
-          "enum": ["list_records", "get_record", "get_document", "calculator", "submit"]
-        },
-        "args": {"type": "object"},
-        "thought": {"type": ["string", "null"], "maxLength": 500}
-      }
-    },
-    "Error": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["code"],
-      "properties": {
-        "code": {
-          "type": "string",
-          "enum": [
-            "INVALID_ACTION",
-            "INVALID_TABLE",
-            "NOT_FOUND",
-            "INVALID_CURSOR",
-            "CALC_ERROR",
-            "EPISODE_OVER",
-            "INVALID_SUBMISSION"
-          ]
-        }
-      }
-    },
-    "Observation": {
+    "step": {"type": "integer", "minimum": 1, "maximum": 100},
+    "action": {"type": "object"},
+    "observation": {
       "type": "object",
       "additionalProperties": false,
       "required": ["ok", "tool", "result", "error", "steps_used", "steps_remaining"],
@@ -70,46 +21,47 @@
           "enum": ["list_records", "get_record", "get_document", "calculator", "submit"]
         },
         "result": {"type": ["object", "null"]},
-        "error": {"anyOf": [{"$ref": "#/$defs/Error"}, {"type": "null"}]},
+        "error": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["code"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "enum": [
+                "INVALID_ACTION",
+                "INVALID_TABLE",
+                "NOT_FOUND",
+                "INVALID_CURSOR",
+                "CALC_ERROR",
+                "EPISODE_OVER",
+                "INVALID_SUBMISSION"
+              ]
+            }
+          }
+        },
         "steps_used": {"type": "integer", "minimum": 0, "maximum": 100},
         "steps_remaining": {"type": "integer", "minimum": 0, "maximum": 100}
-      },
-      "if": {"properties": {"ok": {"const": true}}},
-      "then": {"properties": {"result": {"type": "object"}, "error": {"type": "null"}}},
-      "else": {"properties": {"result": {"type": "null"}, "error": {"$ref": "#/$defs/Error"}}}
-    },
-    "Info": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["max_steps", "version"],
-      "properties": {
-        "max_steps": {"type": "integer", "minimum": 1},
-        "version": {"type": "string"}
       }
     },
-    "Step": {
+    "reward": {"type": "number", "minimum": -1.0, "maximum": 1.0},
+    "terminated": {"type": "boolean"},
+    "truncated": {"type": "boolean"}
+  },
+  "if": {"properties": {"observation": {"properties": {"ok": {"const": true}}}}},
+  "then": {"properties": {"action": {"$ref": "#/$defs/ValidAction"}}},
+  "$defs": {
+    "ValidAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["step_index", "action", "observation", "reward", "terminated", "truncated", "info"],
+      "required": ["tool", "args"],
       "properties": {
-        "step_index": {"type": "integer", "minimum": 0, "maximum": 99},
-        "action": {"$ref": "#/$defs/Action"},
-        "observation": {"$ref": "#/$defs/Observation"},
-        "reward": {"type": "number", "minimum": -1.0, "maximum": 1.0},
-        "terminated": {"type": "boolean"},
-        "truncated": {"type": "boolean"},
-        "info": {"$ref": "#/$defs/Info"}
-      }
-    },
-    "Metrics": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["f1", "precision", "recall", "inspection_steps"],
-      "properties": {
-        "f1": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-        "precision": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-        "recall": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-        "inspection_steps": {"type": "integer", "minimum": 0, "maximum": 100}
+        "tool": {
+          "type": "string",
+          "enum": ["list_records", "get_record", "get_document", "calculator", "submit"]
+        },
+        "args": {"type": "object"},
+        "thought": {"type": ["string", "null"], "maxLength": 500}
       }
     }
   }

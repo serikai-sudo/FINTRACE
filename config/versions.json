@@ -3,6 +3,7 @@
   "schema": "1.0.0",
   "pydantic": "2.14.2",
   "pytest": "9.2.0",
+  "jsonschema": "4.26.0",
   "networkx": "3.6.1",
   "matplotlib": "3.11.2"
 }
