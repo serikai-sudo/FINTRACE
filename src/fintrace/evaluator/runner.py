@@ -24,12 +24,14 @@ from fintrace.agents.rule_based import RuleBasedReconciliation
 from fintrace.constants import CONFIG_DIR, DATA_DIR, MAX_STEPS
 from fintrace.environment.env import FintraceEnv
 from fintrace.evaluator.testing import oracle_for
+from fintrace.logging.trajectory import TrajectoryLogger, trajectory_path
 from fintrace.models import EpisodeConfig, JsonObject
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
 DATA_MANIFEST: Final[str] = "manifest.json"
 EpisodeResult = dict[str, Any]
 PolicyFactory = Callable[[FintraceEnv], Policy]
+LoggerFactory = Callable[[Policy], TrajectoryLogger]
 
 BASELINE_FACTORIES: Final[dict[str, PolicyFactory]] = {
     "random": lambda _env: RandomInvestigator(seed=0),
@@ -45,26 +47,34 @@ def _run(
     seed: int,
     config: EpisodeConfig | None,
     trace: list[JsonObject] | None,
+    make_logger: LoggerFactory | None = None,
 ) -> EpisodeResult:
     observation, _ = env.reset(seed=seed, config=config)
     policy = factory(env)
     policy.reset()
+    logger = make_logger(policy) if make_logger is not None else None
+    if logger is not None:
+        env.attach_logger(logger)  # after reset: the logger is bound to this episode's id
     started = time.monotonic()
     steps = 0
     reward = 0.0
     terminated = truncated = False
     n_findings = 0
-    while steps < MAX_STEPS and not (terminated or truncated):
-        action = policy.act(observation)
-        if trace is not None:
-            trace.append(action)
-        if action.get("tool") == "submit":
-            args = action.get("args")
-            findings = args.get("findings") if isinstance(args, dict) else None
-            n_findings = len(findings) if isinstance(findings, list) else 0
-        observation, reward, terminated, truncated, _ = env.step(action)
-        steps += 1
-    return {
+    try:
+        while steps < MAX_STEPS and not (terminated or truncated):
+            action = policy.act(observation)
+            if trace is not None:
+                trace.append(action)
+            if action.get("tool") == "submit":
+                args = action.get("args")
+                findings = args.get("findings") if isinstance(args, dict) else None
+                n_findings = len(findings) if isinstance(findings, list) else 0
+            observation, reward, terminated, truncated, _ = env.step(action)
+            steps += 1
+    finally:
+        if logger is not None:
+            logger.close()  # a crashing policy must not leave the file handle open
+    result: EpisodeResult = {
         "policy": policy.name,
         "seed": seed,
         "episode_id": env.episode.manifest.episode_id,
@@ -75,6 +85,11 @@ def _run(
         "n_findings": n_findings,
         "elapsed_sec": time.monotonic() - started,
     }
+    if logger is not None:
+        result["trajectory"] = str(logger.path)
+        if logger.error is not None:
+            result["trajectory_error"] = logger.error
+    return result
 
 
 def run_baseline(
@@ -84,9 +99,11 @@ def run_baseline(
     config: EpisodeConfig | None = None,
     *,
     trace: list[JsonObject] | None = None,
+    logger: TrajectoryLogger | None = None,
 ) -> EpisodeResult:
-    """Run one episode with a ready policy; ``trace`` (if given) collects every action dict."""
-    return _run(lambda _env: policy, env, seed, config, trace)
+    """Run one episode with a ready policy; ``trace`` collects actions, ``logger`` the JSONL."""
+    make_logger: LoggerFactory | None = (lambda _policy: logger) if logger is not None else None
+    return _run(lambda _env: policy, env, seed, config, trace, make_logger)
 
 
 def load_split_config(split: str, config_dir: Path | None = None) -> EpisodeConfig:
@@ -109,6 +126,17 @@ def split_seeds(split: str, data_dir: Path | None = None) -> list[int]:
     raise KeyError(f"split {split!r} not in {DATA_MANIFEST}")
 
 
+def _logger_factory(root: Path | None, split: str, seed: int) -> LoggerFactory | None:
+    """A per-episode logger builder named after the policy, or None when not recording."""
+    if root is None:
+        return None
+
+    def make_logger(policy: Policy) -> TrajectoryLogger:
+        return TrajectoryLogger(trajectory_path(root, policy.name, split, seed))
+
+    return make_logger
+
+
 def run_split(
     policy_factory: PolicyFactory,
     split: str,
@@ -117,12 +145,21 @@ def run_split(
     data_dir: Path | None = None,
     config_dir: Path | None = None,
     trace: list[JsonObject] | None = None,
+    trajectory_dir: Path | None = None,
 ) -> list[EpisodeResult]:
-    """Run a policy (built per episode) on the first ``limit`` committed episodes of a split."""
+    """Run a policy (built per episode) on the first ``limit`` committed episodes of a split.
+
+    With ``trajectory_dir`` every episode is recorded to
+    ``<trajectory_dir>/<policy>_<split>_<seed>.jsonl`` and the result carries ``"trajectory"``.
+    """
     seeds = split_seeds(split, data_dir)[:limit]
     config = load_split_config(split, config_dir)
     env = FintraceEnv()
-    return [_run(policy_factory, env, seed, config, trace) for seed in seeds]
+    results: list[EpisodeResult] = []
+    for seed in seeds:
+        make_logger = _logger_factory(trajectory_dir, split, seed)
+        results.append(_run(policy_factory, env, seed, config, trace, make_logger))
+    return results
 
 
 def summarize(results: list[EpisodeResult]) -> dict[str, float | int]:
@@ -149,6 +186,7 @@ __all__ = [
     "DATA_MANIFEST",
     "REPO_ROOT",
     "EpisodeResult",
+    "LoggerFactory",
     "PolicyFactory",
     "load_split_config",
     "run_baseline",
