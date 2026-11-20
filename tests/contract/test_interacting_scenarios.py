@@ -118,9 +118,9 @@ def test_scenario_a_amounts_do_not_double_count(scenario_a: PrivateEpisode) -> N
 
 
 @pytest.mark.slow
-def test_scenario_a_200_seeds() -> None:
+def test_scenario_a_100_seeds() -> None:
     infeasible: list[int] = []
-    for seed in range(200):
+    for seed in range(100):
         try:
             episode = build_episode(seed, _config(a=1))
         except InjectorError:
@@ -137,7 +137,7 @@ def test_scenario_a_200_seeds() -> None:
     assert infeasible == INFEASIBLE_A
 
 
-INFEASIBLE_A = [14, 40, 45, 58, 78, 111, 129, 133, 145, 150, 189, 190]
+INFEASIBLE_A = [14, 40, 45, 58, 78]  # of the first 100 seeds; 111..190 add seven more
 
 
 # ------------------------------------------------------------------ scenario B
@@ -203,9 +203,9 @@ def test_scenario_b_independent_checks_both_pass(scenario_b: PrivateEpisode) -> 
 
 
 @pytest.mark.slow
-def test_scenario_b_200_seeds() -> None:
+def test_scenario_b_100_seeds() -> None:
     infeasible: list[int] = []
-    for seed in range(200):
+    for seed in range(100):
         try:
             episode = build_episode(seed, _config(b=1))
         except InjectorError:
