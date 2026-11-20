@@ -1,8 +1,10 @@
 PYTHON ?= python
 IMAGE  ?= fintrace:0.1.0
+BC_VENV ?= experiments/bc_proof/.venv
+BC_INDEX_URL ?= https://download.pytorch.org/whl/cpu
 
 # `data` is also a directory in the tree: it must stay .PHONY or make reports it "up to date".
-.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap ocel card clean docker-build docker-run docker-verify
+.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap ocel card bc-proof clean docker-build docker-run docker-verify
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt -e ".[dev]"
@@ -52,8 +54,18 @@ ocel:
 card:
 	$(PYTHON) scripts/build_environment_card.py
 
+# D4: CPU behaviour-cloning proof in its own venv (torch never enters .venv, the suite or the image).
+# The CPU wheel index is tried first and PyPI is the fallback; behind a proxy that blocks it, run
+# `make bc-proof BC_INDEX_URL=https://pypi.org/simple`. torch==2.15.0 matches 2.15.0+cpu on the
+# CPU index and 2.15.0 on PyPI; pip prefers the local-version build, so the CPU wheel wins
+# whenever that index is reachable. Not part of test / test-all / lint.
+bc-proof:
+	@test -x $(BC_VENV)/bin/python || python3.11 -m venv $(BC_VENV)
+	$(BC_VENV)/bin/python -m pip install -q --retries 2 --timeout 40 -r requirements.txt -e . -r experiments/bc_proof/requirements.txt --index-url $(BC_INDEX_URL) --extra-index-url https://pypi.org/simple
+	$(BC_VENV)/bin/python experiments/bc_proof/train_bc.py
+
 clean:
-	find . \( -path ./.venv -o -path ./.git \) -prune -o \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache -o -name '*.egg-info' -o -name htmlcov -o -name .coverage -o -path ./build -o -path ./dist \) -prune -exec rm -rf {} +
+	find . \( -path ./.venv -o -path ./experiments/bc_proof/.venv -o -path ./.git \) -prune -o \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache -o -name '*.egg-info' -o -name htmlcov -o -name .coverage -o -path ./build -o -path ./dist \) -prune -exec rm -rf {} +
 
 docker-build:
 	docker build -t $(IMAGE) .

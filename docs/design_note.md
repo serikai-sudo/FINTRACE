@@ -147,9 +147,10 @@ Held by: `tests/contract/test_judge_adapter.py`, `tests/security/test_adapter_is
 ## What is deliberately not here
 
 - No learned model is shipped: the baselines are a random investigator, a rule-based auditor, a
-  mark-everything attacker and a truth-reading oracle. A CPU behaviour-cloning proof
-  (`experiments/bc_proof/`, torch pinned in its own requirements) is planned and will never enter
-  the image.
+  mark-everything attacker and a truth-reading oracle. The CPU behaviour-cloning proof
+  (`experiments/bc_proof/`, torch pinned in its own requirements and venv) shows the expert's
+  actions are learnable from public observations; it claims no rollout reward and never enters
+  the image or the main test suite.
 - No network, GPU or heavy dependency in the runtime path, by test rather than by promise.
 - No hand-edited data: every committed episode, report, chart and log is the output of a `make`
   target and is regenerated and compared by the slow suite.
