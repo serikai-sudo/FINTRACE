@@ -42,7 +42,8 @@ src/fintrace/
   environment/     step/reset loop, observation building, step & time budgets
   tools/           agent-facing tools; operate on PublicEpisode ONLY
   graph/           NetworkX document/ledger graph
-  exporters/       JSONL / OCEL exporters
+  exporters/       JSONL / OCEL exporters; episode_files.py = episode directory read/write
+                   (the single serializer behind `make data` and the jury adapter)
   evaluator/       scoring against PrivateEpisode (truth + provenance)
   reward/          reward shaping on top of evaluator output
   agents/          baseline agents; attacks/ = adversarial reward-hacking agents
@@ -52,6 +53,8 @@ src/fintrace/
 experiments/bc_proof/  behaviour-cloning proof (torch; NOT part of the package or image)
 tests/             contract/, reward/, repro/, robustness/, integration/, test_smoke.py
 scripts/           CLI tooling: generate_schemas.py (`make schemas`)
+judge_adapter.py   jury connection protocol (generate_episode / make_env / score_episode);
+                   the only Python file at the repository root, copied to /app in the image
 trajectories/ docs/ demo/
 ```
 
@@ -66,7 +69,7 @@ architecture; extend existing files first.
 | `make test`         | `pytest -m "not slow"` — the fast suite (< 40 s; config in `pyproject.toml`; warnings are errors) |
 | `make test-slow`    | `pytest -m slow` — seed sweeps, fuzz, full leak scan (≈ 2 min)  |
 | `make test-all`     | `pytest -m ""` — both suites                                    |
-| `make lint`         | `ruff check src/ tests/ scripts/` — must be zero findings       |
+| `make lint`         | `ruff check src/ tests/ scripts/ judge_adapter.py` — must be zero findings |
 | `make schemas`      | regenerate `schemas/{manifest,invoice,payment,submission}.schema.json` from `models.py`; run after every model change, under the pinned deps from `make install` (drift test fails otherwise) |
 | `make data`         | regenerate `data/{train,dev}/ep_*/` + `data/manifest.json` from `config/{train,dev}.yaml` (skips infeasible seeds; commit the result separately) |
 | `make data-verify`  | re-hash every episode's public files against `checksums.sha256` and the config hash; non-zero on drift |
@@ -139,7 +142,10 @@ Python interpreter: **3.11 only** (`requires-python = ">=3.11,<3.12"`). Create t
 5. **Determinism.** Same seed + same config ⇒ byte-identical episode files and identical rewards.
    All randomness flows from one `random.Random(seed)` instance.
 6. **Budgets.** Environment enforces ≤ 100 steps and ≤ 60 s per episode; exceeding either
-   terminates the episode with an error code, not an exception.
+   terminates the episode with an error code, not an exception. The 100-step budget is the
+   deterministic bound; the ≤ 60 s wall-clock is a safety timeout (`time.monotonic`, stored off-state)
+   that fires only on a hung policy and yields the empty-submission truncation reward, so §6.5
+   determinism holds for all well-behaved runs.
 7. **Versioning.** `config/versions.json` and `schema_version` in configs are the source of truth
    for artifact versions; `fintrace.__version__` is the package version.
 

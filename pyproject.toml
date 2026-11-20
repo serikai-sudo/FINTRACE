@@ -94,6 +94,7 @@ ignore = ["S311"]
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # judge_adapter.py lives at the repository root
 addopts = "-ra --strict-markers --strict-config -m 'not slow'"
 markers = [
     "slow: tests > 10s wall time (sweeps, fuzz); run with 'make test-slow'",

@@ -26,9 +26,7 @@ The script never imports the evaluator or the reward: it writes truth files, it 
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
-import io
 import json
 import shutil
 import sys
@@ -38,21 +36,22 @@ from typing import Any, Final, TypeAlias
 import yaml
 
 from fintrace.constants import CONFIG_DIR, DATA_DIR
+from fintrace.exporters.episode_files import (
+    CHECKSUMS_FILE,
+    EPISODE_FILES,
+    PRIVATE_FILES,
+    PUBLIC_FILES,
+    SEED_FILE,
+    canonical_json,
+    read_episode,
+    read_seed,
+    verify_episode,
+    write_episode,
+    write_text,
+)
 from fintrace.generator.build import build_episode
 from fintrace.generator.injectors.base import InjectorError
-from fintrace.models import (
-    EpisodeConfig,
-    FXRate,
-    Invoice,
-    LedgerRow,
-    Manifest,
-    Payment,
-    Policy,
-    PrivateEpisode,
-    Provenance,
-    PublicEpisode,
-    Truth,
-)
+from fintrace.models import EpisodeConfig, PrivateEpisode
 
 REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 # disjoint seed ranges: the dev split is out-of-distribution by seed, not by config
@@ -60,24 +59,8 @@ SPLIT_SEED_BASES: Final[dict[str, int]] = {"train": 1000, "dev": 10000}
 EPISODES_PER_SPLIT: Final[int] = 10
 MAX_CANDIDATE_SEEDS: Final[int] = 100  # ample: the full config rejected 3 of 13 seeds per split
 CONFIG_FILES: Final[dict[str, str]] = {"train": "train.yaml", "dev": "dev.yaml"}
-PUBLIC_FILES: Final[tuple[str, ...]] = (  # the agent-visible artefacts; the only files hashed
-    "fx.csv",
-    "invoices.jsonl",
-    "ledger.csv",
-    "manifest.json",
-    "payments.jsonl",
-    "policy.json",
-)
-PRIVATE_FILES: Final[tuple[str, ...]] = ("provenance.json", "truth.json")  # evaluator-only
-SEED_FILE: Final[str] = "seed.txt"
-CHECKSUMS_FILE: Final[str] = "checksums.sha256"
 DATA_MANIFEST_FILE: Final[str] = "manifest.json"
-EPISODE_FILES: Final[frozenset[str]] = frozenset(
-    (*PUBLIC_FILES, *PRIVATE_FILES, SEED_FILE, CHECKSUMS_FILE)
-)
 EPISODE_DIR_PREFIX: Final[str] = "ep_"
-LEDGER_INT_COLUMNS: Final[tuple[str, ...]] = ("credit_minor", "debit_minor")
-LEDGER_NULLABLE_COLUMNS: Final[tuple[str, ...]] = ("entity_id", "invoice_id", "payment_id")
 CONFIG_HASH_HEX: Final[int] = 12
 SKIP_REASON_CHARS: Final[int] = 120
 STAGING_PREFIX: Final[str] = ".staging_"  # out_dir/.staging_<split>, swapped in once complete
@@ -86,47 +69,7 @@ SplitReport: TypeAlias = dict[str, Any]
 SplitBuild: TypeAlias = tuple[SplitReport, list[tuple[int, PrivateEpisode]]]
 
 
-# ---------------------------------------------------------------- serialisation primitives
-def _canonical_json(obj: object) -> str:
-    """The one JSON form on disk: sorted keys, compact separators, UTF-8 as-is, no NaN."""
-    return json.dumps(
-        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
-    )
-
-
-def _jsonl_text(records: list[dict[str, Any]]) -> str:
-    """One canonical JSON object per line; empty input gives an empty file."""
-    return "".join(_canonical_json(record) + "\n" for record in records)
-
-
-def _csv_text(rows: list[dict[str, Any]], fieldnames: list[str]) -> str:
-    """CSV with the given (sorted) header, LF line ends, ``None`` written as the empty string."""
-    buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n")
-    writer.writeheader()
-    for row in rows:
-        writer.writerow({key: ("" if value is None else value) for key, value in row.items()})
-    return buffer.getvalue()
-
-
-def _write_text(path: Path, text: str) -> None:
-    path.write_bytes(text.encode("utf-8"))  # bytes: LF on every OS, no locale encoding
-
-
-def _write_json(path: Path, obj: object) -> None:
-    _write_text(path, _canonical_json(obj) + "\n")
-
-
-def _read_json(path: Path) -> Any:  # noqa: ANN401 - JSON payload, validated by the caller's model
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _sha256_bytes(payload: bytes) -> str:
-    return hashlib.sha256(payload).hexdigest()
-
-
-def _sha256_file(path: Path) -> str:
-    return _sha256_bytes(path.read_bytes())
+_canonical_json = canonical_json  # legacy name kept for the contract tests
 
 
 # ---------------------------------------------------------------- config
@@ -144,99 +87,6 @@ def config_hash(config_dir: Path) -> str:
     for split in SPLIT_SEED_BASES:
         digest.update((config_dir / CONFIG_FILES[split]).read_bytes())
     return digest.hexdigest()[:CONFIG_HASH_HEX]
-
-
-# ---------------------------------------------------------------- one episode on disk
-def _records(items: tuple[Any, ...]) -> list[dict[str, Any]]:
-    return [item.model_dump(mode="json") for item in items]
-
-
-def _fieldnames(model: type[LedgerRow] | type[FXRate]) -> list[str]:
-    return sorted(model.model_fields)
-
-
-def write_episode(ep: PrivateEpisode, ep_dir: Path, seed: int) -> None:
-    """Write the ten episode files into ``ep_dir`` (created if needed), byte-stably."""
-    ep_dir.mkdir(parents=True, exist_ok=True)
-    public = ep.public
-    _write_json(ep_dir / "manifest.json", public.manifest.model_dump(mode="json"))
-    _write_json(ep_dir / "policy.json", public.policy.model_dump(mode="json"))
-    _write_text(ep_dir / "invoices.jsonl", _jsonl_text(_records(public.invoices)))
-    _write_text(ep_dir / "payments.jsonl", _jsonl_text(_records(public.payments)))
-    _write_text(ep_dir / "ledger.csv", _csv_text(_records(public.ledger), _fieldnames(LedgerRow)))
-    _write_text(ep_dir / "fx.csv", _csv_text(_records(public.fx), _fieldnames(FXRate)))
-    _write_json(ep_dir / "truth.json", ep.truth.model_dump(mode="json"))
-    _write_json(ep_dir / "provenance.json", ep.provenance.model_dump(mode="json"))
-    _write_text(ep_dir / SEED_FILE, f"{seed}\n")
-    lines = [f"{_sha256_file(ep_dir / name)}  {name}\n" for name in sorted(PUBLIC_FILES)]
-    _write_text(ep_dir / CHECKSUMS_FILE, "".join(lines))
-
-
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    # split on "\n" only: str.splitlines() would also break records at U+2028 / U+0085, which
-    # ensure_ascii=False writes verbatim inside string fields
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line]
-
-
-def _read_csv(path: Path) -> list[dict[str, str]]:
-    with path.open(encoding="utf-8", newline="") as handle:
-        return list(csv.DictReader(handle))
-
-
-def _ledger_row(raw: dict[str, str]) -> dict[str, Any]:
-    row: dict[str, Any] = dict(raw)
-    for column in LEDGER_INT_COLUMNS:
-        row[column] = int(row[column])
-    for column in LEDGER_NULLABLE_COLUMNS:
-        row[column] = row[column] or None
-    return row
-
-
-def read_episode(ep_dir: Path) -> PrivateEpisode:
-    """Rebuild the ``PrivateEpisode`` from an episode directory (inverse of ``write_episode``)."""
-    ledger_rows = _read_csv(ep_dir / "ledger.csv")
-    public = PublicEpisode(
-        manifest=Manifest.model_validate(_read_json(ep_dir / "manifest.json")),
-        policy=Policy.model_validate(_read_json(ep_dir / "policy.json")),
-        ledger=tuple(LedgerRow.model_validate(_ledger_row(row)) for row in ledger_rows),
-        invoices=tuple(Invoice.model_validate(r) for r in _read_jsonl(ep_dir / "invoices.jsonl")),
-        payments=tuple(Payment.model_validate(r) for r in _read_jsonl(ep_dir / "payments.jsonl")),
-        fx=tuple(FXRate.model_validate(r) for r in _read_csv(ep_dir / "fx.csv")),
-    )
-    return PrivateEpisode(
-        public=public,
-        truth=Truth.model_validate(_read_json(ep_dir / "truth.json")),
-        provenance=Provenance.model_validate(_read_json(ep_dir / "provenance.json")),
-    )
-
-
-def read_seed(ep_dir: Path) -> int:
-    """The seed recorded in ``seed.txt``."""
-    return int((ep_dir / SEED_FILE).read_text(encoding="utf-8").strip())
-
-
-def _parse_checksums(text: str) -> dict[str, str]:
-    entries: dict[str, str] = {}
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        digest, _, name = line.partition("  ")
-        entries[name] = digest
-    return entries
-
-
-def verify_episode(ep_dir: Path) -> bool:
-    """True iff ``checksums.sha256`` lists exactly the public files and every digest matches."""
-    checksums = ep_dir / CHECKSUMS_FILE
-    if not checksums.is_file():
-        return False
-    expected = _parse_checksums(checksums.read_text(encoding="utf-8"))
-    if set(expected) != set(PUBLIC_FILES):
-        return False
-    return all(
-        (ep_dir / name).is_file() and _sha256_file(ep_dir / name) == digest
-        for name, digest in expected.items()
-    )
 
 
 # ---------------------------------------------------------------- splits
@@ -339,7 +189,7 @@ def generate_split(
 def write_data_manifest(out_dir: Path, report: dict[str, Any]) -> None:
     """``data/manifest.json``: the same report object the CLI prints."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    _write_text(out_dir / DATA_MANIFEST_FILE, _canonical_json(report) + "\n")
+    write_text(out_dir / DATA_MANIFEST_FILE, canonical_json(report) + "\n")
 
 
 def _verify_split(out_dir: Path, split: str, recorded: dict[str, int]) -> list[str]:
@@ -422,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
             write_data_manifest(out_dir, report)
         else:
             print(f"{DATA_MANIFEST_FILE} not updated: regenerate with --split all", file=sys.stderr)
-    print(_canonical_json(report))
+    print(canonical_json(report))
     return 0
 
 
