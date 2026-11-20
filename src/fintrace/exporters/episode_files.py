@@ -6,8 +6,9 @@ jury names): the six public files the agent-side tools read (``manifest.json``, 
 evaluator may read (``truth.json``, ``provenance.json``), ``seed.txt`` and ``checksums.sha256`` over
 the public files. Canonical JSON (sorted keys, compact separators, ``ensure_ascii=False``), CSV via
 ``csv.DictWriter`` with sorted field names and LF line ends, one record per JSONL line.
-``write_episode`` and ``read_episode`` are exact inverses; ``verify_episode`` re-hashes the public
-files. Used by scripts/generate_data.py and by the jury adapter.
+``write_episode`` and ``read_episode`` are exact inverses; ``read_public_episode`` reads the six
+public files only; ``verify_episode`` re-hashes the public files. Used by scripts/generate_data.py,
+the jury adapter and the OCEL exporter.
 """
 
 from __future__ import annotations
@@ -140,10 +141,13 @@ def _ledger_row(raw: dict[str, str]) -> dict[str, Any]:
     return row
 
 
-def read_episode(ep_dir: Path) -> PrivateEpisode:
-    """Rebuild the ``PrivateEpisode`` from an episode directory (inverse of ``write_episode``)."""
+def read_public_episode(ep_dir: Path) -> PublicEpisode:
+    """The ``PublicEpisode`` from the six public files only; truth/provenance/seed stay unread.
+
+    The agent-side readers (exporters, demos) use this: nothing private is opened at all.
+    """
     ledger_rows = _read_csv(ep_dir / "ledger.csv")
-    public = PublicEpisode(
+    return PublicEpisode(
         manifest=Manifest.model_validate(_read_json(ep_dir / "manifest.json")),
         policy=Policy.model_validate(_read_json(ep_dir / "policy.json")),
         ledger=tuple(LedgerRow.model_validate(_ledger_row(row)) for row in ledger_rows),
@@ -151,8 +155,12 @@ def read_episode(ep_dir: Path) -> PrivateEpisode:
         payments=tuple(Payment.model_validate(r) for r in _read_jsonl(ep_dir / "payments.jsonl")),
         fx=tuple(FXRate.model_validate(r) for r in _read_csv(ep_dir / "fx.csv")),
     )
+
+
+def read_episode(ep_dir: Path) -> PrivateEpisode:
+    """Rebuild the ``PrivateEpisode`` from an episode directory (inverse of ``write_episode``)."""
     return PrivateEpisode(
-        public=public,
+        public=read_public_episode(ep_dir),
         truth=Truth.model_validate(_read_json(ep_dir / "truth.json")),
         provenance=Provenance.model_validate(_read_json(ep_dir / "provenance.json")),
     )
@@ -197,6 +205,7 @@ __all__ = [
     "SEED_FILE",
     "canonical_json",
     "read_episode",
+    "read_public_episode",
     "read_seed",
     "sha256_file",
     "verify_episode",

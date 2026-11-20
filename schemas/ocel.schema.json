@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:fintrace:schema:ocel:1.0.0",
   "title": "OCEL",
-  "description": "Object-Centric Event Log in the OCEL 2.0 JSON exchange format, exported from a public episode: documents, entities and ledger rows are objects; postings and payments are events. Required keys follow the standard (id/type, plus time for events); attributes and relationships are optional.",
+  "description": "Object-Centric Event Log in the OCEL 2.0 JSON exchange format, exported from a public episode and one agent trajectory: the episode, its invoices, payments and FX rates and the findings the agent submitted are objects; the agent's tool calls (list_records, get_record, get_document, calculator, submit) are events, one per trajectory step, with synthetic offset-aware times derived from the step index. Built from public data only. Required keys follow the standard (id/type, plus time for events); attributes and relationships are optional.",
   "type": "object",
   "additionalProperties": false,
   "required": ["objectTypes", "eventTypes", "objects", "events"],

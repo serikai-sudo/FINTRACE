@@ -101,6 +101,22 @@ def _keys(value: object) -> list[str]:
     return []
 
 
+def forbidden_tokens(text: str) -> list[str]:
+    """The ``FORBIDDEN_TOKENS`` present in ``text`` as case-insensitive substrings (table order)."""
+    lowered = text.lower()
+    return [token for token in FORBIDDEN_TOKENS if token in lowered]
+
+
+def forbidden_keys(value: object) -> list[str]:
+    """Sorted lowercased JSON keys at any depth of ``value`` that break the key rules."""
+    keys = {key.lower() for key in _keys(value)}
+    return [
+        key
+        for key in sorted(keys)
+        if key in FORBIDDEN_KEYS or any(f in key for f in FORBIDDEN_KEY_FRAGMENTS)
+    ]
+
+
 def scan_trajectory(path: Path) -> list[str]:
     """``<file>:<line>: <what>`` for every forbidden token or key fragment (case-insensitive).
 
@@ -112,16 +128,13 @@ def scan_trajectory(path: Path) -> list[str]:
     hits: list[str] = []
     with path.open(encoding="utf-8") as handle:
         for number, line in enumerate(handle, start=1):
-            lowered = line.lower()
-            hits.extend(f"{path.name}:{number}: {t}" for t in FORBIDDEN_TOKENS if t in lowered)
+            hits.extend(f"{path.name}:{number}: {t}" for t in forbidden_tokens(line))
             try:
-                keys = {key.lower() for key in _keys(json.loads(line))}
+                value = json.loads(line)
             except ValueError:
                 hits.append(f"{path.name}:{number}: not a JSON object")
                 continue
-            for key in sorted(keys):
-                if key in FORBIDDEN_KEYS or any(f in key for f in FORBIDDEN_KEY_FRAGMENTS):
-                    hits.append(f"{path.name}:{number}: key {key}")
+            hits.extend(f"{path.name}:{number}: key {key}" for key in forbidden_keys(value))
     return hits
 
 
@@ -224,6 +237,8 @@ __all__ = [
     "TRAJECTORY_SUFFIX",
     "TrajectoryLogger",
     "canonical_line",
+    "forbidden_keys",
+    "forbidden_tokens",
     "sanitize_action",
     "scan_trajectory",
     "trajectory_path",
