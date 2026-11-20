@@ -129,14 +129,32 @@ def derive_issue_id(episode_id: str, source_id: str, taken: set[str]) -> str:
     raise InjectorError("issue id space exhausted")
 
 
-def touched_ids(private: PrivateEpisode) -> set[str]:
-    """Ids already claimed by earlier issues (membership only).
+def legitimate_pattern_ids(private: PrivateEpisode) -> set[str]:
+    """Every public id owned by a legitimate-but-suspicious pattern (decoy), membership only.
 
-    Affected, created and source ids, plus the records whose amounts an injector rewrote
-    (``modified[RELAXED_IDS_KEY]``): those rows are exempt from the amount check, so no later
-    injector may build on them.
+    The generator marks each decoy group in ``provenance.history`` with ``legitimate_pattern``
+    and the ids it owns; injectors must never pick these as sources, or a clean decoy would turn
+    into (part of) a real error and the false-positive guarantee would be lost.
     """
     ids: set[str] = set()
+    for event in private.provenance.history:
+        if not event.get("legitimate_pattern"):
+            continue
+        for key in ("invoice_ids", "payment_ids", "doc_ids", "journal_ids", "row_ids"):
+            values = event.get(key)
+            if isinstance(values, list):
+                ids.update(str(value) for value in values)
+    return ids
+
+
+def touched_ids(private: PrivateEpisode) -> set[str]:
+    """Ids no injector may build on (membership only).
+
+    Earlier issues' affected, created and source ids, the records whose amounts an injector
+    rewrote (``modified[RELAXED_IDS_KEY]``: exempt from the amount check), and every id owned by
+    a legitimate pattern (decoy).
+    """
+    ids: set[str] = legitimate_pattern_ids(private)
     for issue in private.truth.issues:
         ids.update(issue.affected_ids)
     for entry in private.provenance.injections:
@@ -329,6 +347,7 @@ __all__ = [
     "fresh_label",
     "inconsistent_ids",
     "invoice_side",
+    "legitimate_pattern_ids",
     "payment_journal_rows",
     "pick_eligible_payment",
     "pick_foreign_currency_payment",

@@ -28,6 +28,7 @@ from fintrace.models import (
 )
 
 from .benford import chi_squared_benford
+from .company import CREDIT_NOTE_PREFIX
 from .fx import FxIndex, build_fx_index, convert_minor, policy_date, rate_on
 
 Side = Literal["supplier", "customer"]
@@ -111,8 +112,8 @@ def check_payment_allocation(
     invoices: Sequence[Invoice],
     ignore_ids: frozenset[str] = frozenset(),
 ) -> None:
-    """One allocation per payment hitting an existing same-currency invoice, dated after it;
-    allocations equal the payment amount and never overpay the invoice.
+    """One allocation per payment hitting an existing same-currency invoice (never a credit
+    note), dated after it; allocations equal the payment amount and never overpay the invoice.
 
     Payments in ``ignore_ids`` carry a deliberately injected allocation error that the injector
     verifies on its own (``independent_check``). For them only the two rules such an error
@@ -134,6 +135,7 @@ def check_payment_allocation(
             invoice = invoice_by_id.get(ref.invoice_id)
             if (
                 invoice is None
+                or _is_credit_note(invoice)  # a credit note is not payable
                 or invoice.currency != payment.currency
                 or ref.allocated_minor < 1
                 or paid_at < datetime.fromisoformat(invoice.issued_at)
@@ -187,11 +189,23 @@ def _invoice_side(
     if debit.debit_minor != invoice.total_minor or credit.credit_minor != invoice.total_minor:
         return None
     accounts = (debit.account, credit.account)
+    if _is_credit_note(invoice):  # a credit note reverses the original's posting
+        if accounts == ("AP", "EXPENSE"):
+            return "supplier"
+        if accounts == ("REVENUE", "AR"):
+            return "customer"
+        return None
     if accounts == ("EXPENSE", "AP"):
         return "supplier"
     if accounts == ("AR", "REVENUE"):
         return "customer"
     return None
+
+
+def _is_credit_note(invoice: Invoice) -> bool:
+    """Public convention: every line of a credit note starts with ``CREDIT_NOTE_PREFIX``."""
+    lines = invoice.line_items
+    return bool(lines) and all(line.desc.startswith(CREDIT_NOTE_PREFIX) for line in lines)
 
 
 def _payment_rows_ok(

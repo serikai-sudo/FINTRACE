@@ -526,6 +526,29 @@ class ErrorInjectionConfig(FrozenModel):
         return sum(params.count for params in plans) + 2 * scenarios
 
 
+class DecoyCounts(FrozenModel):
+    """Counts of legitimate-but-suspicious patterns woven into the clean history.
+
+    These are NOT errors: ``truth.issues`` never lists them, the validator and every injector
+    check report zero discrepancies on them, and injectors never pick them as sources. They
+    measure false-positive robustness: a shotgun submission that flags them loses.
+    """
+
+    repeated_payment_amounts: NonNegInt = Field(default=0, le=5)  # same amount, other invoices
+    split_payments: NonNegInt = Field(default=0, le=5)  # two payments summing exactly to one total
+    refunds: NonNegInt = Field(default=0, le=3)  # credit note reversing (part of) an invoice
+    similar_invoices: NonNegInt = Field(default=0, le=5)  # same total, different lines/periods
+
+    def total(self) -> int:
+        """Number of decoy groups to generate."""
+        return (
+            self.repeated_payment_amounts
+            + self.split_payments
+            + self.refunds
+            + self.similar_invoices
+        )
+
+
 class EpisodeConfig(FrozenModel):
     """Configuration for generating one episode. Deterministic given (seed, config, VERSION)."""
 
@@ -543,6 +566,7 @@ class EpisodeConfig(FrozenModel):
         default=Decimal("0.20"), ge=Decimal("0"), le=Decimal("0.6")
     )
     errors: ErrorInjectionConfig = Field(default_factory=ErrorInjectionConfig)
+    decoys: DecoyCounts = Field(default_factory=DecoyCounts)
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -571,6 +595,7 @@ __all__ = [
     "Action",
     "CalculatorArgs",
     "CurrencyCode",
+    "DecoyCounts",
     "EpisodeConfig",
     "EpisodeState",
     "Error",
