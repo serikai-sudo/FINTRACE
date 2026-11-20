@@ -246,6 +246,7 @@ def _built(seeds: range) -> list[PrivateEpisode]:
     return episodes
 
 
+@pytest.mark.slow
 def test_variant_distribution_uniform() -> None:
     episodes = _built(range(50))
     variants: Counter[str] = Counter(

@@ -41,7 +41,7 @@ trajectories:
 	$(PYTHON) scripts/record_trajectories.py --split dev
 
 attacks:
-	@echo "TODO"
+	$(PYTHON) scripts/run_attacks.py --split dev
 
 oracle-gap:
 	@echo "TODO"

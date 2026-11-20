@@ -27,6 +27,21 @@ def _load_script() -> ModuleType:
 
 
 GEN = _load_script()
+
+
+@pytest.fixture(autouse=True)
+def _cached_builds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Build each (seed, config) once per module: the script is cheap, the generator is not."""
+    real = GEN.build_episode
+    store: dict[tuple[int, str], object] = {}
+
+    def cached(seed: int, config: object = None) -> object:
+        key = (seed, "" if config is None else config.model_dump_json())  # type: ignore[attr-defined]
+        if key not in store:
+            store[key] = real(seed, config)
+        return store[key]
+
+    monkeypatch.setattr(GEN, "build_episode", cached)
 CONFIG_DIR = REPO_ROOT / "config"
 
 
