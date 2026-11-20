@@ -2,7 +2,7 @@ PYTHON ?= python
 IMAGE  ?= fintrace:0.1.0
 
 # `data` is also a directory in the tree: it must stay .PHONY or make reports it "up to date".
-.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap ocel clean docker-build docker-run
+.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap ocel clean docker-build docker-run docker-verify
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt -e ".[dev]"
@@ -57,3 +57,13 @@ docker-build:
 
 docker-run:
 	docker run --rm --network none --cpus 2 --memory 4g $(IMAGE)
+
+# Jury-protocol smoke inside the image, offline, with the jury limits; the driver script is piped
+# on stdin because the image ships no scripts/. Prints PASS/FAIL and the wall time incl. cold start.
+docker-verify: docker-build
+	@start=$$(date +%s); \
+	if docker run --rm -i --network none --cpus 2 --memory 4g --entrypoint python $(IMAGE) - < scripts/jury_protocol_smoke.py; then \
+		echo "docker-verify: PASS ($$(( $$(date +%s) - start ))s wall incl. cold start, --network none)"; \
+	else \
+		echo "docker-verify: FAIL"; exit 1; \
+	fi
