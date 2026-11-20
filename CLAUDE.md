@@ -33,7 +33,8 @@ config/            YAML episode configs (default/train/dev) + versions.json (pin
 schemas/           JSON Schema 2020-12. manifest/invoice/payment/submission are GENERATED from
                    models.py by `make schemas`; trajectory/ocel are hand-written (tests pin them
                    to constants.py)
-data/{train,dev}/  generated episodes (git-ignored, only .gitkeep is tracked)
+data/{train,dev}/  10 + 10 committed episodes, ep_<episode_id>/ each (`make data` regenerates them
+                   from config/{train,dev}.yaml; data/manifest.json lists seeds and skipped seeds)
 src/fintrace/
   constants.py     project-wide Final constants
   models.py        Pydantic v2 models (PublicEpisode / PrivateEpisode, records, submissions)
@@ -67,6 +68,9 @@ architecture; extend existing files first.
 | `make test-all`     | `pytest -m ""` — both suites                                    |
 | `make lint`         | `ruff check src/ tests/ scripts/` — must be zero findings       |
 | `make schemas`      | regenerate `schemas/{manifest,invoice,payment,submission}.schema.json` from `models.py`; run after every model change, under the pinned deps from `make install` (drift test fails otherwise) |
+| `make data`         | regenerate `data/{train,dev}/ep_*/` + `data/manifest.json` from `config/{train,dev}.yaml` (skips infeasible seeds; commit the result separately) |
+| `make data-verify`  | re-hash every episode's public files against `checksums.sha256` and the config hash; non-zero on drift |
+| `make data-dry`     | build both splits in memory and print the report JSON without writing |
 | `make demo`         | end-to-end demo episode (TODO)                                  |
 | `make baselines`    | run baseline agents on the dev split (TODO)                     |
 | `make attacks`      | run reward-hacking attack agents (TODO)                         |
@@ -166,4 +170,6 @@ Python interpreter: **3.11 only** (`requires-python = ">=3.11,<3.12"`). Create t
 2. Edit existing files; do not create files outside the tree in §2 without approval.
 3. Keep diffs minimal and scoped to the task; no drive-by refactors.
 4. Before finishing: `make lint && make test` green; report outputs verbatim.
-5. Never commit generated data (`data/*/*.json*`, `trajectories/*.jsonl`) or secrets.
+5. Never commit trajectories (`trajectories/*.jsonl`) or secrets. The dataset under `data/` is
+   committed, but only as the output of `make data` and in its own `data:` commit — never hand-edit
+   an episode file (`make data-verify` and the integration tests catch drift).

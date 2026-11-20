@@ -11,6 +11,9 @@ make test      # fast tests (pytest -m "not slow")
 make test-slow # seed sweeps and other slow tests (pytest -m slow)
 make test-all  # everything
 make schemas   # regenerate the model-derived JSON Schemas after modifying src/fintrace/models.py
+make data      # regenerate data/{train,dev}/ep_*/ (10 + 10 episodes) from config/{train,dev}.yaml
+make data-verify # re-hash the committed episodes against checksums.sha256 (drift detection)
+make data-dry  # build both splits in memory and print the report without writing
 make demo      # end-to-end demo episode (TODO)
 ```
 

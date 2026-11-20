@@ -1,7 +1,8 @@
 PYTHON ?= python
 IMAGE  ?= fintrace:0.1.0
 
-.PHONY: install test test-slow test-all lint schemas demo baselines attacks oracle-gap clean docker-build docker-run
+# `data` is also a directory in the tree: it must stay .PHONY or make reports it "up to date".
+.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines attacks oracle-gap clean docker-build docker-run
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt -e ".[dev]"
@@ -20,6 +21,15 @@ lint:
 
 schemas:
 	$(PYTHON) scripts/generate_schemas.py
+
+data:
+	$(PYTHON) scripts/generate_data.py
+
+data-verify:
+	$(PYTHON) scripts/generate_data.py --verify-only
+
+data-dry:
+	$(PYTHON) scripts/generate_data.py --dry-run
 
 demo:
 	@echo "TODO"

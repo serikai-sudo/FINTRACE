@@ -1,13 +1,28 @@
-# inherits: default.yaml
-# Dev (held-out) split. Only overridden keys will remain here once the config loader exists;
-# until then the full key set is mirrored from default.yaml.
+# FINTRACE held-out dev split.
+# Same generator settings as train.yaml on purpose: the split is out-of-distribution by seed, not by
+# config. scripts/generate_data.py (make data) draws seeds 10000..10099 (SPLIT_SEED_BASES["dev"]),
+# disjoint from the training range, and keeps the first 10 feasible ones as data/dev/ep_<episode_id>/.
 schema_version: "1.0.0"
-episode:
-  n_ledger_rows: 500
-  n_documents: 60
-  errors:
-    duplicate_invoice: 1
-    partial_payment: 1
-    fx_error: 1
-    period_misclass: 1
-    clean_decoys: 3
+n_ledger_rows_range: [500, 1500]
+n_documents_range: [30, 150]
+n_entities_range: [8, 20]
+base_currency: "USD"
+foreign_currencies: ["EUR", "GBP"]
+period_days: 90
+timezone: "+05:00"
+recurring_supplier_count: 3
+split_payment_rate: "0.15"
+foreign_invoice_rate: "0.20"
+errors:
+  duplicate_invoice: {count: 1}
+  payment_allocation: {count: 1}
+  fx_error: {count: 1}
+  period_misclassification: {count: 1}
+  interacting:
+    scenario_a: 1
+    scenario_b: 1
+decoys:
+  repeated_payment_amounts: 2
+  split_payments: 1
+  refunds: 1
+  similar_invoices: 1
