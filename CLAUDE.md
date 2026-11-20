@@ -83,6 +83,7 @@ architecture; extend existing files first.
 | `make clean`        | remove caches, build artifacts, `*.egg-info` (keeps `.venv`)    |
 | `make docker-build` | `docker build -t fintrace:0.1.0 .`                              |
 | `make docker-run`   | run the image offline with jury limits (`--network none --cpus 2 --memory 4g`) |
+| `make docker-verify` | build the image and run the jury protocol inside it offline with the jury limits (`scripts/jury_protocol_smoke.py` piped on stdin: generate_episode → make_env → rule_based → score_episode); prints PASS/FAIL + wall time, non-zero on failure; see `docs/docker_offline_verification.md` |
 
 Python interpreter: **3.11 only** (`requires-python = ">=3.11,<3.12"`). Create the venv with
 `python3.11 -m venv .venv`.
