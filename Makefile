@@ -2,7 +2,7 @@ PYTHON ?= python
 IMAGE  ?= fintrace:0.1.0
 
 # `data` is also a directory in the tree: it must stay .PHONY or make reports it "up to date".
-.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap clean docker-build docker-run
+.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap ocel clean docker-build docker-run
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt -e ".[dev]"
@@ -45,6 +45,9 @@ attacks:
 
 oracle-gap:
 	$(PYTHON) scripts/run_oracle_gap.py
+
+ocel:
+	$(PYTHON) scripts/export_ocel.py --trajectory trajectories/rule_based_dev_10000.jsonl --out docs/sample_ocel_log.json
 
 clean:
 	find . \( -path ./.venv -o -path ./.git \) -prune -o \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache -o -name '*.egg-info' -o -name htmlcov -o -name .coverage -o -path ./build -o -path ./dist \) -prune -exec rm -rf {} +

@@ -121,6 +121,16 @@ ROUNDING_MODES: Final[tuple[RoundingMode, ...]] = (
 DEFAULT_ROUNDING_MODE: Final[RoundingMode] = "ROUND_HALF_EVEN"
 MINOR_UNIT_DIGITS_DEFAULT: Final[int] = 2  # USD / EUR / KZT
 
+# ---------------------------------------------------------------- 11b. OCEL 2.0 export
+# Object types of the exported log (display order); event types are TOOL_NAMES. Trajectories carry
+# no clock, so event times are synthetic: OCEL_TIME_BASE + step * OCEL_STEP_SECONDS (offset-aware,
+# deterministic, never the wall clock). Object attribute times use the pm4py sentinel for initial
+# values.
+OCEL_OBJECT_TYPES: Final[tuple[str, ...]] = ("episode", "invoice", "payment", "fx_rate", "finding")
+OCEL_TIME_BASE: Final[str] = "2026-04-01T09:00:00+05:00"
+OCEL_STEP_SECONDS: Final[int] = 1
+OCEL_OBJECT_TIME: Final[str] = "1970-01-01T00:00:00Z"
+
 # ---------------------------------------------------------------- 12. Paths (relative to repo root)
 CONFIG_DIR: Final[Path] = Path("config")
 DATA_DIR: Final[Path] = Path("data")
@@ -157,6 +167,10 @@ __all__ = [
     "MINOR_UNIT_DIGITS_DEFAULT",
     "MIN_LEDGER_ROWS",
     "MIN_TOLERANCE_MINOR",
+    "OCEL_OBJECT_TIME",
+    "OCEL_OBJECT_TYPES",
+    "OCEL_STEP_SECONDS",
+    "OCEL_TIME_BASE",
     "OPAQUE_ID_PATTERN",
     "REWARD_CLIP_MAX",
     "REWARD_CLIP_MIN",

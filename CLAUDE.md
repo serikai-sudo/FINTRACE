@@ -79,6 +79,7 @@ architecture; extend existing files first.
 | `make trajectories` | record the 4 baselines × dev split as `trajectories/<policy>_dev_<seed>.jsonl` (one canonical JSON line per step, thoughts kept) and leak-scan every file; only `rule_based_dev_10000.jsonl` is committed as the demo sample |
 | `make attacks`      | run the 20 reward-hack attackers on the dev split and write `docs/reward_robustness_report.md`, `docs/results_attacks.json`, `docs/figures/robustness_chart.png`; non-zero if any attacker beats −0.3 |
 | `make oracle-gap`   | build 5 x 3 paired single-error diagnostic episodes in memory (clean + one type each, seeds 30000+), run the 24 policies (4 baselines + 20 attackers) and write `docs/oracle_gap_report.md`, `docs/oracle_gap_results.json`, `docs/figures/oracle_gap_matrix.png`; non-zero if the oracle drops below +0.9 or an attacker earns a positive reward on erroneous books |
+| `make ocel`         | export the committed sample trajectory + its public dev episode as an OCEL 2.0 log (`docs/sample_ocel_log.json`; objects = episode/invoices/payments/fx_rates/findings, events = tool calls); validates structure + `schemas/ocel.schema.json` and leak-scans before writing; non-zero on any failure |
 | `make clean`        | remove caches, build artifacts, `*.egg-info` (keeps `.venv`)    |
 | `make docker-build` | `docker build -t fintrace:0.1.0 .`                              |
 | `make docker-run`   | run the image offline with jury limits (`--network none --cpus 2 --memory 4g`) |
