@@ -190,9 +190,15 @@ def test_run_oracle_gap_full(tmp_path: Path, capsys: pytest.CaptureFixture[str])
     png = (tmp_path / "figures" / "oracle_gap_matrix.png").read_bytes()
     assert png[:8] == PNG_MAGIC and len(png) > 10_000
     assert struct.unpack(">II", png[16:24]) == (1400, 1000)
-    # the committed artefacts are exactly what this run produced (json + report; png by size)
+    # the committed artefacts are exactly what this run produced (json + report byte for byte);
+    # the committed png is checked structurally (magic + dimensions): matplotlib PNG bytes differ
+    # across freetype / font-hinting stacks, so its size is not comparable between machines
     for name in ("oracle_gap_results.json", "oracle_gap_report.md"):
         committed = DOCS / name
         assert committed.is_file(), f"run `make oracle-gap` and commit docs/{name}"
         assert committed.read_bytes() == (tmp_path / name).read_bytes(), f"{name} drifted"
-    assert (DOCS / "figures" / "oracle_gap_matrix.png").stat().st_size == len(png)
+    committed_png = DOCS / "figures" / "oracle_gap_matrix.png"
+    assert committed_png.is_file(), "run `make oracle-gap` and commit docs/figures/*.png"
+    data = committed_png.read_bytes()
+    assert data[:8] == PNG_MAGIC and len(data) > 10_000
+    assert struct.unpack(">II", data[16:24]) == (1400, 1000)

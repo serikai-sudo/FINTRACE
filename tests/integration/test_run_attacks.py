@@ -61,9 +61,15 @@ def test_run_attacks_full_dev_split(tmp_path: Path, capsys: pytest.CaptureFixtur
     png = (tmp_path / "figures" / "robustness_chart.png").read_bytes()
     assert png[:8] == PNG_MAGIC and len(png) > 10_000
     assert struct.unpack(">II", png[16:24]) == (1200, 800)
-    # the committed artefacts are exactly what this run produced (json + report; png by size)
+    # the committed artefacts are exactly what this run produced (json + report byte for byte);
+    # the committed png is checked structurally (magic + dimensions): matplotlib PNG bytes differ
+    # across freetype / font-hinting stacks, so its size is not comparable between machines
     for name in ("results_attacks.json", "reward_robustness_report.md"):
         committed = DOCS / name
         assert committed.is_file(), f"run `make attacks` and commit docs/{name}"
         assert committed.read_bytes() == (tmp_path / name).read_bytes(), f"{name} drifted"
-    assert (DOCS / "figures" / "robustness_chart.png").stat().st_size == len(png)
+    committed_png = DOCS / "figures" / "robustness_chart.png"
+    assert committed_png.is_file(), "run `make attacks` and commit docs/figures/*.png"
+    data = committed_png.read_bytes()
+    assert data[:8] == PNG_MAGIC and len(data) > 10_000
+    assert struct.unpack(">II", data[16:24]) == (1200, 800)
