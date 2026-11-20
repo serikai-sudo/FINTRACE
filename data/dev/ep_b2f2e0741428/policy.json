@@ -1,0 +1,1 @@
+{"fx":{"fallback":"previous_available_date","rate_date_rule":"transaction_date","rate_direction":"source_to_target"},"period":{"assignment_field":"issued_at","end_exclusive":true,"start_inclusive":true,"timezone":"+05:00"},"rounding":{"apply_to":"converted_total","minor_unit_digits":2,"mode":"ROUND_HALF_EVEN"}}
