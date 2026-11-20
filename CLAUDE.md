@@ -72,7 +72,7 @@ architecture; extend existing files first.
 | `make data-verify`  | re-hash every episode's public files against `checksums.sha256` and the config hash; non-zero on drift |
 | `make data-dry`     | build both splits in memory and print the report JSON without writing |
 | `make demo`         | end-to-end demo episode (TODO)                                  |
-| `make baselines`    | run baseline agents on the dev split (TODO)                     |
+| `make baselines`    | run the 4 baselines (random, rule_based, mark_everything, oracle) on the dev split and write `docs/results_dev.md` |
 | `make attacks`      | run reward-hacking attack agents (TODO)                         |
 | `make oracle-gap`   | oracle vs. baseline gap report (TODO)                           |
 | `make clean`        | remove caches, build artifacts, `*.egg-info` (keeps `.venv`)    |

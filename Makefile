@@ -35,7 +35,7 @@ demo:
 	@echo "TODO"
 
 baselines:
-	@echo "TODO"
+	$(PYTHON) scripts/run_baselines.py --split dev
 
 attacks:
 	@echo "TODO"
