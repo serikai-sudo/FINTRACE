@@ -44,7 +44,7 @@ attacks:
 	$(PYTHON) scripts/run_attacks.py --split dev
 
 oracle-gap:
-	@echo "TODO"
+	$(PYTHON) scripts/run_oracle_gap.py
 
 clean:
 	find . \( -path ./.venv -o -path ./.git \) -prune -o \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache -o -name '*.egg-info' -o -name htmlcov -o -name .coverage -o -path ./build -o -path ./dist \) -prune -exec rm -rf {} +
