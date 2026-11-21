@@ -113,6 +113,12 @@ Held by: `tests/reward/` (matcher, adversarial matcher, metrics, reward, adversa
 `tests/robustness/test_attackers.py`, `tests/integration/test_run_attacks.py`,
 `tests/robustness/test_transforms.py`, `tests/contract/test_oracle_gap.py`.
 
+A jury that replays an episode through its own copy is served without special cases: ids may be
+remapped in any order (`exporters/episode_files.py` canonicalises the affected ids of a truth it
+reads, because the matcher compares them as a set), and a directory the scorer cannot read raises
+one documented, path-free `ValueError("episode could not be loaded")` from both `reset` and
+`score_episode` instead of a parser traceback.
+
 ## Limitations
 
 Honest boundaries of the current reward, isolation and generator; none of them is hidden behind a
