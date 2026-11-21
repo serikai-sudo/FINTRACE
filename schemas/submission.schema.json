@@ -2,29 +2,25 @@
   "$defs": {
     "Finding": {
       "additionalProperties": false,
-      "description": "One reported issue in an agent submission.",
+      "description": "One reported issue in an agent submission.\n\nOnly the STRUCTURE is validated here (jury matcher conventions \u00a77-\u00a78): JSON value types,\nrequired fields, no extra fields and the documented size limits (20 affected ids, 10 evidence\nids, 1000 characters, 64 characters per id). The VALUES are judged by the matcher with exact\nstring comparison: an unknown type string, a currency or id that differs by case or whitespace,\na non-existent evidence id or a wrong amount make the finding a false positive, never a\nstructural error of the whole submission.",
       "properties": {
         "affected_ids": {
           "items": {
             "maxLength": 64,
-            "pattern": "^[A-Za-z0-9_\\-:.]+$",
             "type": "string"
           },
           "maxItems": 20,
           "type": "array"
         },
         "claimed_amount_minor": {
-          "minimum": 0,
           "type": "integer"
         },
         "currency": {
-          "pattern": "^[A-Z]{3}$",
           "type": "string"
         },
         "evidence_ids": {
           "items": {
             "maxLength": 64,
-            "pattern": "^[A-Za-z0-9_\\-:.]+$",
             "type": "string"
           },
           "maxItems": 10,
@@ -35,12 +31,6 @@
           "type": "string"
         },
         "type": {
-          "enum": [
-            "duplicate_invoice",
-            "payment_allocation",
-            "fx_error",
-            "period_misclassification"
-          ],
           "type": "string"
         }
       },

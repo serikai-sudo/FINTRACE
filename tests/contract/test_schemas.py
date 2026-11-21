@@ -23,7 +23,6 @@ from fintrace.agents.base import THOUGHT_MAX_CHARS
 from fintrace.constants import (
     EPISODE_ID_PATTERN,
     ERROR_CODES,
-    ISSUE_TYPES,
     MAX_AFFECTED_IDS_PER_FINDING,
     MAX_EVIDENCE_IDS_PER_FINDING,
     MAX_EXPLANATION_CHARS,
@@ -161,13 +160,15 @@ def test_submission_schema_enforces_caps() -> None:
     finding = schema["$defs"]["Finding"]
     assert finding["additionalProperties"] is False
     props = finding["properties"]
-    assert props["type"]["enum"] == list(ISSUE_TYPES)
+    # values are the matcher's business (jury §8): only JSON types and size limits are structural
+    assert props["type"] == {"type": "string"}
     assert props["affected_ids"]["maxItems"] == MAX_AFFECTED_IDS_PER_FINDING
-    assert props["affected_ids"]["items"]["maxLength"] == MAX_ID_CHARS
+    assert props["affected_ids"]["items"] == {"maxLength": MAX_ID_CHARS, "type": "string"}
     assert props["evidence_ids"]["maxItems"] == MAX_EVIDENCE_IDS_PER_FINDING
+    assert props["evidence_ids"]["items"] == {"maxLength": MAX_ID_CHARS, "type": "string"}
     assert props["explanation"]["maxLength"] == MAX_EXPLANATION_CHARS
-    assert props["claimed_amount_minor"] == {"minimum": 0, "type": "integer"}
-    assert props["currency"]["pattern"] == "^[A-Z]{3}$"
+    assert props["claimed_amount_minor"] == {"type": "integer"}
+    assert props["currency"] == {"type": "string"}
 
 
 # ---------------------------------------------------------------- 9-10: hand-written files

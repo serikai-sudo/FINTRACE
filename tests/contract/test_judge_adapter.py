@@ -212,8 +212,23 @@ def test_score_episode_invalid_structure(episode_dir: Path) -> None:
     nulls = {"tp": None, "fp": None, "fn": None, "precision": None, "recall": None, "f1": None}
     too_many = judge_adapter.score_episode(str(episode_dir), {"findings": [one] * 31}, 5)
     assert too_many == {**nulls, "return": -1.0}
-    bad_field = {"findings": [{**one, "currency": "usd"}]}
-    assert judge_adapter.score_episode(str(episode_dir), bad_field, 5) == {**nulls, "return": -1.0}
+    structural = [  # jury §7-§8: value types, missing fields and size limits void the submit
+        {"findings": [{**one, "claimed_amount_minor": "10000"}]},
+        {"findings": [{**one, "claimed_amount_minor": True}]},
+        {"findings": [{**one, "claimed_amount_minor": 1.5}]},
+        {"findings": [{k: v for k, v in one.items() if k != "currency"}]},
+        {"findings": [{**one, "evidence_ids": [f"DOC-{i:04d}" for i in range(11)]}]},
+        {"findings": [{**one, "explanation": "a" * 1001}]},
+        {"findings": [{**one, "unexpected": 1}]},
+    ]
+    for payload in structural:
+        scored = judge_adapter.score_episode(str(episode_dir), payload, 5)
+        assert scored == {**nulls, "return": -1.0}
+    # M06: a currency that differs by case is ONE false positive, not a structural error
+    lower_case = {"findings": [{**one, "currency": "usd"}]}
+    lower = judge_adapter.score_episode(str(episode_dir), lower_case, 5)
+    n_issues = len(private.truth.issues)
+    assert (lower["tp"], lower["fp"], lower["fn"], lower["return"]) == (0, 1, n_issues, -1.0)
     assert judge_adapter.score_episode(str(episode_dir), {"findings": "nope"}, 5)["return"] == -1.0
     assert judge_adapter.score_episode(str(episode_dir), {"findings": []}, -1)["return"] == -1.0
 

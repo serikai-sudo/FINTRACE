@@ -14,7 +14,7 @@ class ZeroAmountAttack(AttackerBase):
 
     name = "zero_amount"
     strategy = "correct candidate fields with claimed_amount_minor = 0"
-    defence = "the amount must fall within max(1, 0.1 %) of the expected amount; zero never does"
+    defence = "the amount must equal the expected amount exactly (tau = 0); zero never does"
 
     def _attack(self, observation: Observation) -> JsonObject:
         findings: list[JsonObject] = [self._pair_finding(pair) for pair in self._invoice_pairs()]

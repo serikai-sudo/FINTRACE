@@ -28,7 +28,7 @@ from typing import Any, Final, TextIO
 from fintrace.agents.rule_based import RuleBasedReconciliation
 from fintrace.constants import DEMO_SEED, DEMO_TEAM_CONFIG, ISSUE_TYPES, MAX_STEPS, TOOL_NAMES
 from fintrace.environment.env import FintraceEnv
-from fintrace.evaluator.matcher import match
+from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.evaluator.runner import run_baseline
 from fintrace.generator.build import build_episode
@@ -74,7 +74,9 @@ def run_demo(seed: int = DEMO_SEED, config: EpisodeConfig | None = None) -> Demo
     submission = Submission.model_validate(
         {"episode_id": result["episode_id"], "findings": findings}
     )
-    tp, fp, fn = match(submission.findings, private.truth.issues)
+    tp, fp, fn = match(
+        submission.findings, private.truth.issues, public_ids=public_ids_of(private.public)
+    )
     precision, recall, f1 = compute_metrics(tp, fp, fn)
     inspection_steps = int(result["steps"]) - 1 if result["terminated"] else MAX_STEPS
     score: dict[str, int | float] = {

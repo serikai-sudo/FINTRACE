@@ -8,7 +8,7 @@ from fintrace.agents.random_agent import MAX_RANDOM_STEPS, RandomInvestigator
 from fintrace.agents.rule_based import RuleBasedReconciliation
 from fintrace.constants import ISSUE_TYPES, MAX_FINDINGS, IssueType
 from fintrace.environment.env import FintraceEnv
-from fintrace.evaluator.matcher import match
+from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.runner import (
     BASELINE_FACTORIES,
     EpisodeResult,
@@ -52,7 +52,9 @@ def _submitted(trace: list[JsonObject]) -> list[Finding]:
 
 def _tp_fp_fn(env: FintraceEnv, trace: list[JsonObject]) -> tuple[int, int, int]:
     assert env._private is not None  # test-side oracle access
-    return match(_submitted(trace), env._private.truth.issues)
+    return match(
+        _submitted(trace), env._private.truth.issues, public_ids=public_ids_of(env._private.public)
+    )
 
 
 # ---------------------------------------------------------------- random

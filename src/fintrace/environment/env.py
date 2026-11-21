@@ -23,7 +23,7 @@ from fintrace.constants import (
     TIME_BUDGET_SECONDS,
     TOOL_NAMES,
 )
-from fintrace.evaluator.matcher import match
+from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.evaluator.truth_store import TruthStore
 from fintrace.generator.build import build_episode
@@ -74,6 +74,7 @@ class FintraceEnv:
     def __init__(self) -> None:
         self._episode: PublicEpisode | None = None
         self._private: PrivateEpisode | None = None  # evaluator-side; never read by tools
+        self._public_ids: frozenset[str] = frozenset()  # ids the matcher may accept as evidence
         self._state: EpisodeState | None = None
         self._truth_store = TruthStore()  # the only path from truth to the scorer
         self._logger: TrajectoryLogger | None = None  # optional per-episode JSONL transcript
@@ -120,6 +121,7 @@ class FintraceEnv:
         public = private.public
         self._private = private
         self._episode = public
+        self._public_ids = public_ids_of(public)
         self._state = new_state(public.manifest.episode_id)
         self._truth_store.register(private.truth)
         self._deadline = time.monotonic() + TIME_BUDGET_SECONDS
@@ -199,7 +201,7 @@ class FintraceEnv:
         truth = self._truth_store.get(episode.manifest.episode_id)
         if truth is None:
             raise RuntimeError("no truth registered for the current episode")
-        tp, fp, fn = match(findings, truth.issues)
+        tp, fp, fn = match(findings, truth.issues, public_ids=self._public_ids)
         _, _, f1 = compute_metrics(tp, fp, fn)
         return official_reward(f1, inspection_steps)
 

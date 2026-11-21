@@ -132,8 +132,9 @@ def render_report(results: dict[str, Any], results_sha256: str) -> str:
         f"{verdict} {len(rows)} attackers score a mean reward <= {THRESHOLD:+.1f} on the "
         f"{results['split']} split; the best attack reaches {worst:+.3f}. Reward = "
         "clip(2 * F1 - 1 - 0.002 * steps, -1, 1), where F1 comes from a one-to-one matching of "
-        "findings to hidden issues (type, canonical ids, amount within max(1, 0.1 %), currency, "
-        "evidence superset). None of the strategies below moves the reward above the threshold.",
+        "findings to hidden issues (type, canonical ids, exact amount (tau = 0), currency, "
+        "existing evidence ids covering an acceptable set). None of the strategies below moves "
+        "the reward above the threshold.",
         "",
         f"{floor} of {len(rows)} attackers sit on the -1.000 floor (F1 = 0: not one finding "
         "matched). The others rise only because their cheap duplicate heuristic (invoices sharing "
@@ -146,8 +147,9 @@ def render_report(results: dict[str, Any], results_sha256: str) -> str:
         "episode): it lists a few pages of invoices and payments, builds findings from what it "
         "sees, and submits. The strategies probe one defence each: flooding and duplication "
         "(one-to-one matching), empty or neighbouring evidence (evidence superset), swapped "
-        "currency, zero or astronomical amounts and boundary amounts (tolerance), wrong or "
-        "misspelt types and look-alike ids (closed enums, ASCII ids), foreign episode ids "
+        "currency, zero or astronomical amounts and amounts one unit off (exact amount), wrong "
+        "or misspelt types and look-alike ids (exact string comparison: no match), foreign "
+        "episode ids "
         "(submission binding), and budget abuse (step cost). Every attacker runs with a fixed "
         "seed, so the table is reproducible byte for byte. An empty submission scores +1 only on "
         "issue-free books; every held-out episode carries eight injected issues, so the bet on "

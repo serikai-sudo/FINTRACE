@@ -11,16 +11,13 @@ CYRILLIC_I = chr(0x0406)  # Cyrillic capital I, a look-alike of the Latin capita
 
 
 class UnicodeIDAttack(AttackerBase):
-    """Candidate findings whose ids carry a Cyrillic look-alike; then a clean empty exit."""
+    """Candidate findings whose ids carry a Cyrillic look-alike: accepted, matched to nothing."""
 
     name = "unicode_id"
-    strategy = "candidate ids with a Cyrillic look-alike letter, then empty submission"
-    defence = "ids are ASCII-only by schema: the submission is rejected as INVALID_ACTION"
+    strategy = "candidate ids with a Cyrillic look-alike letter"
+    defence = "ids are compared as exact strings: a look-alike letter names no record, so FP"
 
     def _attack(self, observation: Observation) -> JsonObject:
-        if self._fired:
-            return self._submit_empty("look-alike ids rejected, closing the episode")
-        self._fired = True
         findings: list[JsonObject] = []
         for pair in self._invoice_pairs()[:5] or [None]:  # type: ignore[list-item]
             finding = self._pair_finding(pair) if pair else self._random_pair_finding()

@@ -19,6 +19,7 @@ TRUTH = Issue(
     currency="USD",
     acceptable_evidence_sets=(("DOC-A", "DOC-B"),),
 )
+IDS = frozenset({"INV-A", "INV-B", "DOC-A", "DOC-B"})
 FINDING = Finding(
     type="duplicate_invoice",
     affected_ids=["INV-A", "INV-B"],
@@ -32,11 +33,11 @@ FINDING = Finding(
 def test_tp_fp_fn_tuple_only() -> None:
     """match() returns exactly (tp, fp, fn) as plain ints, nothing else."""
     for findings in ([], [FINDING], [FINDING, FINDING]):
-        result = match(findings, (TRUTH,))
+        result = match(findings, (TRUTH,), public_ids=IDS)
         assert type(result) is tuple and len(result) == 3
         assert all(type(value) is int for value in result)
-    assert match([], (TRUTH,)) == (0, 0, 1)
-    matrix = build_compat_matrix([FINDING], (TRUTH,))
+    assert match([], (TRUTH,), public_ids=IDS) == (0, 0, 1)
+    matrix = build_compat_matrix([FINDING], (TRUTH,), public_ids=IDS)
     assert matrix == {0: [0]}  # indices only: no Issue, no id, no amount
     assert all(type(k) is int and all(type(j) is int for j in v) for k, v in matrix.items())
 
