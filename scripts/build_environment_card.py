@@ -586,8 +586,9 @@ def render_markdown(m: Metrics) -> str:
         "- Reward conventions: amounts must match exactly (the published per-type tolerance "
         "`AMOUNT_TOLERANCE_MINOR` is 0 minor units); evidence ids must exist in the public episode "
         "and cover one acceptable set; a finding with a wrong value is one false positive, while a "
-        "wrong JSON type, a missing field or a size limit voids the submission (-1). The reward "
-        "resists the shipped attackers; it is not a proof against every possible exploit.",
+        "wrong JSON type, a missing field or a size limit ends the episode at -1 and is recorded "
+        "in the evaluator journal. The reward resists the shipped attackers; it is not a proof "
+        "against every possible exploit.",
         "- Isolation is in-process: the environment object holds the hidden truth in an "
         "evaluator-side store and the tools read the public episode only; the harness must run "
         "the policy in a separate process for a process boundary.",
@@ -703,8 +704,8 @@ def render_pdf(m: Metrics, out: Path) -> int:
         "rule-based baseline spends its whole step "
         f"budget ({x.rule_based_mean} vs oracle {x.oracle_mean} on dev); amounts must match "
         "exactly (published tolerance 0), evidence ids must exist and cover an acceptable set, a "
-        "wrong value is one false positive while a wrong JSON type or size limit voids the "
-        "submission; isolation is in-process (the policy must run in a separate process)."
+        "wrong value is one false positive while a wrong JSON type or size limit ends the episode "
+        "at -1; isolation is in-process (the policy must run in a separate process)."
     )
     heading("Reproducibility")
     para(

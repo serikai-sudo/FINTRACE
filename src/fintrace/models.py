@@ -465,6 +465,15 @@ class ToolResult(FrozenModel):
 Observation: TypeAlias = ToolResult
 
 
+class JournalEntry(FrozenModel):
+    """One evaluator-side note about a refused submission; never reaches the agent surface."""
+
+    event: str
+    step: StepCount
+    code: str
+    reason: tuple[str, ...] = ()  # pydantic error types of the agent's own payload, e.g. too_long
+
+
 class EpisodeState(StrictModel):
     """Mutable per-episode counters owned by the environment."""
 

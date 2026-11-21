@@ -125,12 +125,17 @@ scenario-specific test, and each names the code that defines it.
   (unknown type string, currency or id differing by case or whitespace, wrong amount, missing or
   non-existent evidence) is one false positive; a wrong JSON value type, a missing field, an extra
   field or a size limit (30 findings, 10 evidence ids, 20 affected ids, 1 000 characters, 64
-  characters per id) is a structural error that voids the submission with return −1.
-- **An invalid submit inside an episode does not end it.** The environment answers
-  `INVALID_ACTION`, charges the step and keeps the episode open; only `score_episode` (the jury's
-  closed call) turns a structurally invalid submission into −1.
-- **Isolation is in-process.** The environment object holds the `PrivateEpisode` and an
-  evaluator-side `TruthStore`; the tools read `PublicEpisode` only and an import firewall keeps
+  characters per id) is a structural error: the environment ends the episode there with a true
+  reward of −1 (never the empty-submission reward, which is positive on clean books), records the
+  refusal in its evaluator-side journal and hands the policy a code-only error; `score_episode`
+  returns −1 with null metrics for the same payload. A submission that merely names another
+  episode is a binding error (`INVALID_SUBMISSION`): it costs a step and the episode goes on,
+  which the jury adapter never reaches because it fills the episode id itself. An envelope the
+  action contract itself rejects (no `args`, a non-object `args`, an over-long `thought`) is an
+  ordinary malformed action and also keeps the episode open: only a well-formed submit whose
+  payload the submission schema refuses ends it.
+- **Isolation is in-process.** The environment object holds the `PrivateEpisode`, an
+  evaluator-side `TruthStore` and the rejection journal; the tools read `PublicEpisode` only and an import firewall keeps
   `agents/*` away from the evaluator, but the policy must be run in a separate process by the
   harness for the boundary to be a process boundary.
 - **The 60 s budget is enforced at the next step.** A policy that never calls `step` again is not

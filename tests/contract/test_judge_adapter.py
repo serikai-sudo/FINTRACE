@@ -406,3 +406,23 @@ def test_paired_copy_same_episode_id_served_by_new_env(tmp_path: Path, episode_d
     # the first env still serves its own episode, untouched by the second one
     assert _get(env_x, "invoices", old_id)["result"]["invoice_id"] == old_id
     assert _error(_get(env_x, "invoices", new_id))["code"] == "NOT_FOUND"
+
+
+def test_structural_submit_terminates_through_the_adapter(episode_dir: Path) -> None:
+    """Jury Block 3, tests 18-20, end to end: the episode ends, score_episode returns -1.
+
+    In closed mode the policy still sees reward 0 (C19); the -1 lives on the evaluator side.
+    """
+    private = read_episode(episode_dir)
+    one = oracle_findings(private.truth)[0]
+    for payload in ([one] * 31, [{**one, "explanation": "a" * 1001}]):
+        env, _ = _closed(episode_dir)
+        observation, reward, terminated, truncated, info = env.step(
+            {"name": "submit", "args": {"findings": payload}}
+        )
+        assert observation["error"] is not None and observation["result"] is None
+        assert (reward, terminated, truncated) == (0.0, True, False) and info == {}
+        scored = judge_adapter.score_episode(str(episode_dir), {"findings": payload}, 5)
+        assert scored["return"] == -1.0 and scored["tp"] is None
+        after = env.step({"name": "list_records", "args": {"table": "ledger"}})[0]
+        assert after["error"]["code"] == "EPISODE_OVER"

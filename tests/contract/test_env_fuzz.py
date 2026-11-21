@@ -168,6 +168,10 @@ def test_fuzz_action_envelopes_never_crash() -> None:
         "evidence_ids": [],
         "explanation": "",
     }
+    too_many_ids_submit = {
+        "tool": "submit",
+        "args": {"episode_id": env.episode.manifest.episode_id, "findings": [too_many_ids]},
+    }
     pathological: list[object] = [
         {},
         {"tool": None, "args": None},
@@ -179,11 +183,8 @@ def test_fuzz_action_envelopes_never_crash() -> None:
         {"tool": "list_records", "args": {"table": "ledger", "limit": 1_000_000}},
         {"tool": "calculator", "args": {"expression": ""}},
         {"tool": "calculator", "args": {"expression": "1" * 10_000}},
-        {"tool": "submit", "args": {"episode_id": "", "findings": []}},
-        {
-            "tool": "submit",
-            "args": {"episode_id": env.episode.manifest.episode_id, "findings": [too_many_ids]},
-        },
+        {"tool": "submit", "args": {"episode_id": "", "findings": []}},  # binding, not structure
+        too_many_ids_submit,
     ]
     for action in pathological:
         env.reset(seed=1)  # fresh state for each envelope
@@ -193,5 +194,10 @@ def test_fuzz_action_envelopes_never_crash() -> None:
             pytest.fail(f"pathological action crashed: {action!r} -> {exc!r}")
         assert observation.ok is False and observation.error is not None
         assert observation.error.code in ERROR_CODES and observation.error.code != "EPISODE_OVER"
-        assert (reward, terminated, truncated) == (0.0, False, False)
+        # a submission the schema refuses ends the episode at -1 (jury Block 3, tests 18-20);
+        # every other malformed envelope costs a step and leaves the episode open (jury C13)
+        if action is too_many_ids_submit:
+            assert (reward, terminated, truncated) == (-1.0, True, False)
+        else:
+            assert (reward, terminated, truncated) == (0.0, False, False)
         _leak_scan(json.dumps(observation.model_dump(mode="json")) + json.dumps(info), repr(action))
