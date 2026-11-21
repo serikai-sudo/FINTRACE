@@ -168,12 +168,15 @@ def oracle_gap_metrics(docs_dir: Path) -> Metrics:
     }
 
 
-_BASELINE_ROW: Final[re.Pattern[str]] = re.compile(
-    r"^\| (?P<policy>[a-z_]+) \| (?P<mean>[+-]\d\.\d{3}) \| (?P<std>\d\.\d{3}) \| "
-    r"(?P<min>[+-]\d\.\d{3}) \| (?P<max>[+-]\d\.\d{3}) \| (?P<steps>\d+\.\d) \|$"
-)
 _CONFIG_HASH: Final[re.Pattern[str]] = re.compile(r"config hash `([0-9a-f]{12})`")
-_FIELDS: Final[tuple[str, ...]] = ("mean", "std", "min", "max", "steps")
+# Summary-table columns of docs/results_dev.md -> metric keys (read by header name, not position)
+_FIELDS: Final[dict[str, str]] = {
+    "mean": "Return",
+    "std": "Std",
+    "min": "Min",
+    "max": "Max",
+    "steps": "Steps",
+}
 
 
 def baseline_metrics(docs_dir: Path) -> Metrics:
@@ -182,11 +185,22 @@ def baseline_metrics(docs_dir: Path) -> Metrics:
     if not path.is_file():
         raise CardSourceError(f"missing source {path}")
     text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    header = next((i for i, line in enumerate(lines) if line.startswith("| Policy |")), None)
+    if header is None:
+        raise CardSourceError(f"{path}: no Summary table")
+    columns = [cell.strip() for cell in lines[header].strip("|").split("|")]
+    try:
+        index = {key: columns.index(title) for key, title in _FIELDS.items()}
+    except ValueError as exc:
+        raise CardSourceError(f"{path}: Summary table lacks a column: {exc}") from exc
     rows: dict[str, dict[str, float]] = {}
-    for line in text.splitlines():
-        match = _BASELINE_ROW.match(line)
-        if match and match["policy"] not in rows:
-            rows[match["policy"]] = {k: float(match[k]) for k in _FIELDS}
+    for line in lines[header + 2 :]:  # skip the |---| rule; the table ends at the first blank
+        if not line.startswith("| "):
+            break
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if len(cells) == len(columns) and cells[0] not in rows:
+            rows[cells[0]] = {key: float(cells[i]) for key, i in index.items()}
     missing = [p for p in BASELINE_ORDER if p not in rows]
     if missing:
         raise CardSourceError(f"{path}: no Summary row for {missing}")

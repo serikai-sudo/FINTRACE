@@ -21,7 +21,10 @@ DOCS = REPO_ROOT / "docs"
 CARD_MD = DOCS / "environment_card.md"
 CARD_PDF = DOCS / "environment_card.pdf"
 BASELINES = ("oracle", "rule_based", "mark_everything", "random")
-BASELINE_ROW = re.compile(r"^\| (oracle|rule_based|mark_everything|random) \| ([+-]\d\.\d{3}) \|")
+BASELINE_ROW = re.compile(  # Summary row: policy, P, R, F1, then the signed mean return
+    r"^\| (oracle|rule_based|mark_everything|random) \| \d\.\d{3} \| \d\.\d{3} \| \d\.\d{3} \| "
+    r"([+-]\d\.\d{3}) \|"
+)
 LEAK_TEST = REPO_ROOT / "tests" / "security" / "test_leak_scan_full.py"
 FUZZ_TEST = REPO_ROOT / "tests" / "contract" / "test_env_fuzz.py"
 
