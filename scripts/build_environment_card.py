@@ -62,7 +62,7 @@ BASELINES_FILE: Final[str] = "results_dev.md"
 BASELINE_ORDER: Final[tuple[str, ...]] = ("oracle", "rule_based", "mark_everything", "random")
 LEAK_TEST: Final[str] = "security/test_leak_scan_full.py"
 FUZZ_TEST: Final[str] = "contract/test_env_fuzz.py"
-JURY_CPUS: Final[int] = 2  # CLAUDE.md section 1, compute budget on the jury machine
+JURY_CPUS: Final[int] = 2  # CONTRIBUTING.md section 1, compute budget on the jury machine
 JURY_MEMORY_GB: Final[int] = 4
 SECTIONS: Final[tuple[str, ...]] = (
     "## Environment details",
@@ -471,7 +471,7 @@ def provenance_rows(m: Metrics) -> list[tuple[str, str, str]]:
         ("test inventory", x.tests, "tests/**/test_*.py (AST)"),
         ("image base digest", f"sha256:{x.digest[:16]}...", "Dockerfile: ARG PYTHON_BASE"),
         ("jury compute budget", f"{env['cpus']} CPU / {env['memory_gb']} GB RAM, no network",
-         "CLAUDE.md section 1 (declared constants JURY_CPUS, JURY_MEMORY_GB)"),
+         "CONTRIBUTING.md section 1 (declared constants JURY_CPUS, JURY_MEMORY_GB)"),
         ("step / time budgets", f"{env['max_steps']} actions, {env['time_budget_s']:g} s",
          "fintrace.constants: MAX_STEPS, TIME_BUDGET_SECONDS"),
     ]  # fmt: skip

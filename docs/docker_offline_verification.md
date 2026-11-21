@@ -1,7 +1,7 @@
 # Docker offline verification of the jury protocol
 
 The jury scores FINTRACE by importing `judge_adapter` inside the Docker image, run with
-`--network none --cpus 2 --memory 4g` (CLAUDE.md §1). This page records how that offline
+`--network none --cpus 2 --memory 4g` (CONTRIBUTING.md §1). This page records how that offline
 guarantee is verified, what was executed in the authoring environment and what the jury runs.
 
 ## 1. What is verified automatically on every CI run (no Docker needed)

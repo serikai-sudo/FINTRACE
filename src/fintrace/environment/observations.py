@@ -1,6 +1,6 @@
 """Observation builders: ok / error ToolResults with the step budget, the reset observation, info.
 
-Errors carry a code and nothing else (CLAUDE.md §6.4); the developer-facing message passed to
+Errors carry a code and nothing else (CONTRIBUTING.md §6.4); the developer-facing message passed to
 ``build_error_result`` is dropped before anything reaches the agent.
 """
 

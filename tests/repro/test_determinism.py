@@ -1,5 +1,5 @@
 """Reproducibility: the same seed and config give the same bytes, from the generator to the
-trajectory file (CLAUDE.md §6.5)."""
+trajectory file (CONTRIBUTING.md §6.5)."""
 
 from __future__ import annotations
 

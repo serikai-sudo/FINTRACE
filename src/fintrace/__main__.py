@@ -7,7 +7,7 @@ auditor through the real environment, and scored against the hidden truth with t
 ``compute_metrics`` -> ``official_reward``. The output shows the agent's own step notes, the
 submitted findings and the seven score fields; it is byte-stable for a given seed (no wall clock,
 no paths). Output is written to the given stream from this entry point only: no ``print()`` in
-``src/`` (CLAUDE.md §4).
+``src/`` (CONTRIBUTING.md §4).
 
 Usage::
 

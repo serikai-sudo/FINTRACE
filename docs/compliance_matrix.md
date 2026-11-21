@@ -7,7 +7,7 @@ document. Suites: **fast** = `make test` (479 tests, runs in CI on every push), 
 daemon). The `C05`/`C16`/`C17`/`C18`/`C20` suffixes in some test names are this team's internal
 labels for protocol checks, not references to a jury document.
 
-## 1. Judging criteria (CLAUDE.md §7)
+## 1. Judging criteria (CONTRIBUTING.md §7)
 
 | Criterion (points) | What it means here | Evidence | Suite |
 |---|---|---|---|

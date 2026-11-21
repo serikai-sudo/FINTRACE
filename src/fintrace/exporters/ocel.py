@@ -4,7 +4,7 @@ Objects are the public records (invoices, payments, FX rates), the episode itsel
 findings the agent submitted; events are the agent's tool calls, one per trajectory step, in the
 OCEL 2.0 JSON exchange format (``schemas/ocel.schema.json``) that process-mining tools such as
 PM4Py and Celonis import. The log is built from a ``PublicEpisode`` and a trajectory JSONL only
-(``fintrace.logging.trajectory``): nothing private is reachable from here (CLAUDE.md 6.2) and
+(``fintrace.logging.trajectory``): nothing private is reachable from here (CONTRIBUTING.md 6.2) and
 ``scan_ocel`` re-checks the result with the trajectory leak rules. Trajectories carry no clock,
 so event times are synthetic and deterministic: ``OCEL_TIME_BASE + step * OCEL_STEP_SECONDS``;
 object attribute times use the ``1970-01-01T00:00:00Z`` sentinel pm4py uses for initial values.
