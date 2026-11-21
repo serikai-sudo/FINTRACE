@@ -22,7 +22,7 @@ make ocel      # sample investigation as an OCEL 2.0 log -> docs/sample_ocel_log
 make docker-verify # build the image and run the jury protocol inside it offline (needs a Docker daemon)
 make card      # Environment Card from the committed artefacts -> docs/environment_card.{md,pdf}
 make bc-proof  # D4: CPU behaviour-cloning proof in its own venv (torch stays out of the image and the suite)
-make demo      # end-to-end demo episode (TODO)
+make demo      # python -m fintrace: one in-memory episode, the rule-based auditor's notes, findings, official score
 ```
 
 Contributor and agent rules: [CLAUDE.md](CLAUDE.md). Every claim below maps to a test, a `make`

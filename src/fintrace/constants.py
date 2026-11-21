@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 from pathlib import Path
-from typing import Final, Literal, TypeAlias
+from typing import Any, Final, Literal, TypeAlias
 
 # ---------------------------------------------------------------- 1. Version
 SCHEMA_VERSION: Final[str] = "1.0.0"  # on-disk episode artefacts (manifest, truth, provenance)
@@ -131,7 +131,30 @@ OCEL_TIME_BASE: Final[str] = "2026-04-01T09:00:00+05:00"
 OCEL_STEP_SECONDS: Final[int] = 1
 OCEL_OBJECT_TIME: Final[str] = "1970-01-01T00:00:00Z"
 
-# ---------------------------------------------------------------- 12. Paths (relative to repo root)
+# ---------------------------------------------------------------- 12. Demo / jury smoke config
+# One episode built in memory by `python -m fintrace` (the Docker ENTRYPOINT) and by the jury
+# protocol smoke run: dev-like sizes, one injected issue of each type among four decoy patterns.
+# A plain dict, not an EpisodeConfig: models.py imports this module, not the other way round.
+DEMO_SEED: Final[int] = 10000  # feasible for DEMO_TEAM_CONFIG; the demo output is byte-stable
+DEMO_TEAM_CONFIG: Final[dict[str, Any]] = {
+    "n_ledger_rows_range": [500, 1500],
+    "n_documents_range": [30, 150],
+    "n_entities_range": [8, 20],
+    "errors": {
+        "duplicate_invoice": {"count": 1},
+        "payment_allocation": {"count": 1},
+        "fx_error": {"count": 1},
+        "period_misclassification": {"count": 1},
+    },
+    "decoys": {
+        "repeated_payment_amounts": 1,
+        "split_payments": 1,
+        "refunds": 1,
+        "similar_invoices": 1,
+    },
+}
+
+# ---------------------------------------------------------------- 13. Paths (relative to repo root)
 CONFIG_DIR: Final[Path] = Path("config")
 DATA_DIR: Final[Path] = Path("data")
 SCHEMAS_DIR: Final[Path] = Path("schemas")
@@ -148,6 +171,8 @@ __all__ = [
     "DATA_DIR",
     "DEFAULT_ROUNDING_MODE",
     "DEFAULT_TOLERANCE_FRAC",
+    "DEMO_SEED",
+    "DEMO_TEAM_CONFIG",
     "ENV_VERSION",
     "EPISODE_ID_PATTERN",
     "ERROR_CODES",

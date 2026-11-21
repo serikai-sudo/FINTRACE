@@ -30,29 +30,14 @@ from typing import Any, Final
 import judge_adapter
 
 from fintrace.agents.rule_based import RuleBasedReconciliation
-from fintrace.constants import MAX_STEPS
+from fintrace.constants import DEMO_TEAM_CONFIG, MAX_STEPS
 from fintrace.generator.injectors.base import InjectorError
 
 SCORE_KEYS: Final[tuple[str, ...]] = ("tp", "fp", "fn", "precision", "recall", "f1", "return")
 MAX_SEED_TRIES: Final[int] = 10
-# dev-like sizes with one injected issue of each type; no config file needed inside the image
-EMBEDDED_TEAM_CONFIG: Final[dict[str, Any]] = {
-    "n_ledger_rows_range": [500, 1500],
-    "n_documents_range": [30, 150],
-    "n_entities_range": [8, 20],
-    "errors": {
-        "duplicate_invoice": {"count": 1},
-        "payment_allocation": {"count": 1},
-        "fx_error": {"count": 1},
-        "period_misclassification": {"count": 1},
-    },
-    "decoys": {
-        "repeated_payment_amounts": 1,
-        "split_payments": 1,
-        "refunds": 1,
-        "similar_invoices": 1,
-    },
-}
+# dev-like sizes with one injected issue of each type; no config file needed inside the image.
+# The same dict drives `python -m fintrace` (fintrace.constants.DEMO_TEAM_CONFIG).
+EMBEDDED_TEAM_CONFIG: Final[dict[str, Any]] = DEMO_TEAM_CONFIG
 
 
 class _View:
