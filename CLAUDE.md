@@ -74,7 +74,7 @@ architecture; extend existing files first.
 | `make data`         | regenerate `data/{train,dev}/ep_*/` + `data/manifest.json` from `config/{train,dev}.yaml` (skips infeasible seeds; commit the result separately) |
 | `make data-verify`  | re-hash every episode's public files against `checksums.sha256` and the config hash; non-zero on drift |
 | `make data-dry`     | build both splits in memory and print the report JSON without writing |
-| `make demo`         | end-to-end demo episode (TODO)                                  |
+| `make demo`         | `python -m fintrace` (= the Docker ENTRYPOINT): one episode built in memory from the embedded demo config (seed 10000, no `config/`, `data/` or network), investigated by the rule_based auditor; prints the agent's own step notes, the submitted findings and the official 7-field score (`match` → `compute_metrics` → `official_reward`, as `judge_adapter.score_episode`); byte-stable; `--seed N`, `--full` |
 | `make baselines`    | run the 4 baselines (random, rule_based, mark_everything, oracle) on the dev split and write `docs/results_dev.md` |
 | `make trajectories` | record the 4 baselines × dev split as `trajectories/<policy>_dev_<seed>.jsonl` (one canonical JSON line per step, thoughts kept) and leak-scan every file; only `rule_based_dev_10000.jsonl` is committed as the demo sample |
 | `make attacks`      | run the 20 reward-hack attackers on the dev split and write `docs/reward_robustness_report.md`, `docs/results_attacks.json`, `docs/figures/robustness_chart.png`; non-zero if any attacker beats −0.3 |

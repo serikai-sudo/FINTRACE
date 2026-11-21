@@ -38,7 +38,7 @@ pipes into the container, so the in-container run and the CI test exercise one c
 | User | non-root `fintrace`, uid 10001, `nologin` shell |
 | Interpreter | `PYTHONPATH=/app/src:/app`, `PYTHONDONTWRITEBYTECODE=1`, `python -m compileall` at build time so cold start pays no compile cost |
 | Network | nothing in `src/` or `judge_adapter.py` imports `socket`, `urllib`, `http`, `requests` or `httpx`; the protocol test above proves the whole path runs with sockets blocked |
-| Entry point | `python -m fintrace` (placeholder CLI, exit 0); the jury overrides it with `--entrypoint python` or imports `judge_adapter` from `/app` |
+| Entry point | `python -m fintrace`: the live demo episode (built in memory from the embedded config, investigated by the rule-based auditor, scored; byte-stable, no files, no network), so `docker run --rm --network none fintrace:0.1.0` shows an investigation; the jury overrides it with `--entrypoint python` or imports `judge_adapter` from `/app` |
 | `MPLBACKEND=Agg` | inert since matplotlib left the image; harmless |
 
 ## 3. Status in the authoring environment

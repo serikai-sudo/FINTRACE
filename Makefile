@@ -34,7 +34,7 @@ data-dry:
 	$(PYTHON) scripts/generate_data.py --dry-run
 
 demo:
-	@echo "TODO"
+	$(PYTHON) -m fintrace
 
 baselines:
 	$(PYTHON) scripts/run_baselines.py --split dev
