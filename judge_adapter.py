@@ -17,6 +17,7 @@ available through ``score_episode``. Nothing here re-implements generation, matc
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 from typing import Any, Final
 
@@ -29,7 +30,7 @@ from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.exporters.episode_files import read_episode, write_episode
 from fintrace.generator.build import build_episode
-from fintrace.models import EpisodeConfig, JsonObject, Submission, ToolResult
+from fintrace.models import EpisodeConfig, JsonObject, PrivateEpisode, Submission, ToolResult
 from fintrace.reward.official import official_reward
 
 TASK_DESCRIPTION: Final[str] = (
@@ -50,6 +51,28 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
 MODE_CLOSED: Final[str] = "closed"
 MODE_TRAIN: Final[str] = "train"
 SCORE_KEYS: Final[tuple[str, ...]] = ("tp", "fp", "fn", "precision", "recall", "f1")
+
+
+# A directory the harness hands us can fail to read in many ways: a missing file or a permission
+# problem (OSError), broken JSON, a value the models reject (both ValueError), a CSV whose header
+# or rows do not line up (KeyError, TypeError), a field past the csv limit (csv.Error) or JSON
+# nested past the interpreter's limit (RecursionError).
+_LOAD_ERRORS: Final[tuple[type[Exception], ...]] = (
+    OSError, ValueError, KeyError, TypeError, csv.Error, RecursionError,
+)  # fmt: skip
+
+
+def _load_episode(episode_dir: str) -> PrivateEpisode:
+    """Read an episode directory, or fail with one documented, path-free error.
+
+    The jury owns these paths, so a directory that cannot be read is never scored: both entry
+    points that take an ``episode_dir`` raise the same ``ValueError`` with a fixed text, which
+    carries no path, no seed and no parser detail.
+    """
+    try:
+        return read_episode(Path(episode_dir))
+    except _LOAD_ERRORS:
+        raise ValueError("episode could not be loaded") from None
 
 
 def _team_config(config: object) -> EpisodeConfig:
@@ -75,8 +98,14 @@ def generate_episode(seed: int, config: dict[str, Any], output_dir: str) -> None
 def score_episode(
     episode_dir: str, findings: dict[str, Any], inspection_steps: int
 ) -> dict[str, Any]:
-    """Closed scoring call: match ``findings`` against the hidden truth of ``episode_dir``."""
-    private = read_episode(Path(episode_dir))
+    """Closed scoring call: match ``findings`` against the hidden truth of ``episode_dir``.
+
+    An episode that cannot be read raises ``ValueError("episode could not be loaded")``, the same
+    documented failure ``reset`` gives for the same directory: no path, no parser detail. It is
+    never scored as -1, because the paths are the harness's own and ``return`` is what ranks a
+    team; a submission the schema refuses is the case that returns -1 with null metrics.
+    """
+    private = _load_episode(episode_dir)
     try:
         submission = Submission.model_validate(
             {"episode_id": private.truth.episode_id, "findings": _findings_list(findings)}
@@ -172,12 +201,7 @@ class _JudgeEnv:
             episode_dir = settings.get("episode_dir")
             if not isinstance(episode_dir, str) or not episode_dir:
                 raise ValueError("closed mode requires config['episode_dir']")
-            try:
-                private = read_episode(Path(episode_dir))
-            except (OSError, ValueError, ValidationError):
-                # static text: the harness may log it, so no path, seed or parser detail
-                raise ValueError("episode could not be loaded") from None
-            observation = self._env.reset_loaded(private)
+            observation = self._env.reset_loaded(_load_episode(episode_dir))
         elif mode == MODE_TRAIN:
             observation, _ = self._env.reset(seed=int(seed), config=_team_config(settings))
         else:

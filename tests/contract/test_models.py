@@ -621,3 +621,21 @@ def test_every_model_generates_json_schema() -> None:
     for cls in model_classes:
         schema = cls.model_json_schema()
         assert schema.get("additionalProperties") is False, cls.__name__
+
+
+def test_issue_affected_ids_must_be_canonical_in_memory() -> None:
+    """Construction keeps the canonical form; only reading a file canonicalises for you."""
+    fields: dict[str, object] = {
+        "issue_id": "ISS-0001",
+        "type": "duplicate_invoice",
+        "expected_amount_minor": 1000,
+        "currency": "USD",
+        "acceptable_evidence_sets": (("DOC-0001", "DOC-0002"),),
+    }
+    assert Issue(**fields, affected_ids=("INV-0001", "INV-0002")).affected_ids == (
+        "INV-0001",
+        "INV-0002",
+    )
+    for broken in (("INV-0002", "INV-0001"), ("INV-0001", "INV-0001")):
+        with pytest.raises(ValidationError, match="canonical form"):
+            Issue(**fields, affected_ids=broken)

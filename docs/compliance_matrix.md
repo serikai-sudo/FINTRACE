@@ -2,7 +2,7 @@
 
 Every entry in the **Evidence** column is a real artefact of this repository: a pytest node id
 (`path::test_name`, verified with `pytest --collect-only`), a `make` target, or a committed
-document. Suites: **fast** = `make test` (513 tests, runs in CI on every push), **slow** =
+document. Suites: **fast** = `make test` (522 tests, runs in CI on every push), **slow** =
 `make test-slow` (21 tests, second CI job), **manual** = needs something CI does not have (a Docker
 daemon). The `C05`/`C16`/`C17`/`C18`/`C20` suffixes in some test names are this team's internal
 labels for protocol checks, not references to a jury document.
@@ -19,7 +19,7 @@ labels for protocol checks, not references to a jury document.
 | | the committed robustness report is regenerated and compared | `tests/integration/test_run_attacks.py::test_run_attacks_full_dev_split` (`make attacks` → `docs/reward_robustness_report.md`) | slow |
 | Reproducibility / generalization (15) | same seed ⇒ byte-identical episodes and rewards; held-out dev split; invariance under id/order/time transforms | `tests/repro/test_determinism.py::test_deterministic_regeneration`; `tests/contract/test_judge_adapter.py::test_generate_episode_writes_all_files`; `tests/contract/test_generate_data.py::test_train_dev_disjoint_seeds`, `::test_canonical_json_byte_stable`; `tests/repro/test_determinism.py::test_logger_byte_stable_rerun`; `tests/contract/test_oracle_gap.py::test_gap_deterministic`, `::test_oracle_gap_byte_stable_json`; `tests/contract/test_ocel.py::test_ocel_deterministic`; `tests/robustness/test_transforms.py::test_remap_ids_rule_based_f1_matches`, `::test_shift_time_rule_based_f1_matches`, `::test_transforms_deterministic` | fast |
 | | full dataset regeneration byte-identical to `data/`; trajectory rerun identity; dev baselines match `docs/results_dev.md` | `tests/repro/test_data_integration.py::test_generate_data_timing`; `tests/repro/test_record_trajectories.py::test_record_trajectories_dev_with_rerun_check`; `tests/integration/test_baselines_integration.py::test_baselines_dev_split_and_results_md` | slow |
-| Engineering (10) | CI green, lint, typed, tested, documented, offline Docker | `.github/workflows/ci.yml` (jobs `fast-tests`: lint + `make test` + `make data-verify`; `slow-tests`: `make test-slow`; `docker`: `make docker-verify`, the image built and the jury protocol run inside it offline); `make lint` (ruff `E,F,W,I,B,UP,ANN,T20,S,DTZ,TID,RUF` + banned APIs); `tests/integration/test_jury_protocol_offline.py::test_jury_protocol_runs_offline`, `::test_runtime_requirements_lean`, `::test_judge_adapter_imports_no_network_or_heavy_modules`; 534 tests (513 fast / 21 slow) | fast |
+| Engineering (10) | CI green, lint, typed, tested, documented, offline Docker | `.github/workflows/ci.yml` (jobs `fast-tests`: lint + `make test` + `make data-verify`; `slow-tests`: `make test-slow`; `docker`: `make docker-verify`, the image built and the jury protocol run inside it offline); `make lint` (ruff `E,F,W,I,B,UP,ANN,T20,S,DTZ,TID,RUF` + banned APIs); `tests/integration/test_jury_protocol_offline.py::test_jury_protocol_runs_offline`, `::test_runtime_requirements_lean`, `::test_judge_adapter_imports_no_network_or_heavy_modules`; 543 tests (522 fast / 21 slow) | fast |
 | | the image itself | `Dockerfile`, `.dockerignore`, `make docker-verify`; manual: `docs/docker_offline_verification.md` (static audit; no daemon in the authoring environment, so no container transcript is claimed) | manual |
 
 ## 2. Jury-protocol conformance (`judge_adapter.py`)

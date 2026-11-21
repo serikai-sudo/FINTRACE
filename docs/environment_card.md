@@ -26,7 +26,7 @@ Version `0.1.0`, card date 2026-11-20 (fixed build date; every number below is r
 | Adversarial robustness | 20/20 attackers defeated on 10 dev episodes (threshold -0.3); worst mean -0.782 (undersubmit); 16/20 on the -1.000 floor; reference pairs_only -0.540 | `docs/results_attacks.json`, `docs/reward_robustness_report.md` |
 | Differential signal | rule_based oracle gap duplicate_invoice: 0.19, payment_allocation: 0.79, fx_error: 0.19, period_misclassification: 0.20; spread 0.60 (payment_allocation vs duplicate_invoice); attackers in [1.33, 2.00] on every error type; 24 policies x 5 types x 3 paired episodes | `docs/oracle_gap_results.json`, `docs/oracle_gap_report.md` |
 | Baselines (dev split) | oracle +0.975, rule_based +0.678, mark_everything -1.000, random -1.000 (mean reward) | `docs/results_dev.md` |
-| Test coverage | 398 test functions in 53 files (21 slow); parametrisation expands the collected count (`make test` / `make test-slow`) | `tests/` |
+| Test coverage | 402 test functions in 53 files (21 slow); parametrisation expands the collected count (`make test` / `make test-slow`) | `tests/` |
 
 Baseline detail (mean reward, std, min, max, mean steps):
 
@@ -83,7 +83,7 @@ Baseline detail (mean reward, std, min, max, mean steps):
 | config hash | aa6f0ac73b16 | `data/manifest.json: config_hash` |
 | leak-scan surfaces | 20 episodes x 100 = 2000 | `tests/security/test_leak_scan_full.py: EPISODES_REQUIRED, STEPS_PER_EPISODE (+ reset)` |
 | fuzzed actions | 10000 | `tests/contract/test_env_fuzz.py: FUZZ_ITERATIONS` |
-| test inventory | 398 test functions in 53 files (21 slow) | `tests/**/test_*.py (AST)` |
+| test inventory | 402 test functions in 53 files (21 slow) | `tests/**/test_*.py (AST)` |
 | image base digest | sha256:07d4824036af339f... | `Dockerfile: ARG PYTHON_BASE` |
 | jury compute budget | 2 CPU / 4 GB RAM, no network | `CONTRIBUTING.md section 1 (declared constants JURY_CPUS, JURY_MEMORY_GB)` |
 | step / time budgets | 100 actions, 60 s | `fintrace.constants: MAX_STEPS, TIME_BUDGET_SECONDS` |

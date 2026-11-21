@@ -299,7 +299,12 @@ class PublicEpisode(FrozenModel):
 
 
 class Issue(FrozenModel):
-    """One injected error in canonical form; affected_ids are sorted and unique."""
+    """One injected error in canonical form; affected_ids are sorted and unique.
+
+    The matcher compares affected ids as a set, so this is a construction invariant, not a demand
+    on the file: ``exporters.episode_files.read_episode`` canonicalises the order of a truth it
+    reads from disk (a jury copy with remapped ids need not be sorted).
+    """
 
     issue_id: IssueId
     type: IssueType

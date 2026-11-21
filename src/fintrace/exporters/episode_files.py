@@ -157,11 +157,33 @@ def read_public_episode(ep_dir: Path) -> PublicEpisode:
     )
 
 
+def _canonical_truth(raw: Any) -> Any:  # noqa: ANN401 - JSON payload, validated by Truth below
+    """Sort and deduplicate every issue's ``affected_ids`` before the model sees them.
+
+    The matcher treats affected ids as a set, so their order in a file carries no meaning. A jury
+    that remaps the ids of an episode (the paired checks replace row, document, invoice, payment,
+    entity, affected and evidence ids together) has no reason to re-sort the result, and such a
+    copy must load like any other episode. Canonicalising here keeps the in-memory invariant of
+    ``Issue`` strict for everything the generator builds.
+    """
+    if not isinstance(raw, dict) or not isinstance(raw.get("issues"), list):
+        return raw  # let Truth report what is wrong with the payload
+    return {**raw, "issues": [_canonical_issue(issue) for issue in raw["issues"]]}
+
+
+def _canonical_issue(raw: Any) -> Any:  # noqa: ANN401 - JSON payload, validated by Issue below
+    """One issue with its ``affected_ids`` sorted and deduplicated; anything odd is left alone."""
+    ids = raw.get("affected_ids") if isinstance(raw, dict) else None
+    if not isinstance(ids, list) or not all(isinstance(value, str) for value in ids):
+        return raw  # let Issue report what is wrong with the payload
+    return {**raw, "affected_ids": sorted(set(ids))}
+
+
 def read_episode(ep_dir: Path) -> PrivateEpisode:
     """Rebuild the ``PrivateEpisode`` from an episode directory (inverse of ``write_episode``)."""
     return PrivateEpisode(
         public=read_public_episode(ep_dir),
-        truth=Truth.model_validate(_read_json(ep_dir / "truth.json")),
+        truth=Truth.model_validate(_canonical_truth(_read_json(ep_dir / "truth.json"))),
         provenance=Provenance.model_validate(_read_json(ep_dir / "provenance.json")),
     )
 

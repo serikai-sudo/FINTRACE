@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import math
+import sys
 from pathlib import Path
 
 import judge_adapter
@@ -426,3 +427,110 @@ def test_structural_submit_terminates_through_the_adapter(episode_dir: Path) -> 
         assert scored["return"] == -1.0 and scored["tp"] is None
         after = env.step({"name": "list_records", "args": {"table": "ledger"}})[0]
         assert after["error"]["code"] == "EPISODE_OVER"
+
+
+def _unsort_truth_on_disk(ep_dir: Path) -> None:
+    """Reverse every ``affected_ids`` list in a written truth, as a jury remap may leave them."""
+    raw = json.loads((ep_dir / "truth.json").read_text(encoding="utf-8"))
+    raw["issues"] = [
+        {**i, "affected_ids": list(reversed(i["affected_ids"]))} for i in raw["issues"]
+    ]
+    (ep_dir / "truth.json").write_text(json.dumps(raw, indent=1, sort_keys=True), encoding="utf-8")
+    assert any(i["affected_ids"] != sorted(i["affected_ids"]) for i in raw["issues"])
+
+
+def test_truth_with_unsorted_affected_ids_loads_canonically(
+    tmp_path: Path, episode_dir: Path
+) -> None:
+    """Affected ids are a set: a truth whose lists are unsorted or repeated still loads.
+
+    The jury replaces every id in its copy of an episode and has no reason to sort the result, so
+    the order on disk carries no meaning. Reading canonicalises it; building an Issue in memory
+    still demands the canonical form, which keeps the generator honest.
+    """
+    original = read_episode(episode_dir)
+    copy_dir = tmp_path / "unsorted"
+    write_episode(original, copy_dir, DEV_SEED)
+    raw = json.loads((copy_dir / "truth.json").read_text(encoding="utf-8"))
+    raw["issues"] = [
+        # unsorted and with one id repeated
+        {**i, "affected_ids": [*reversed(i["affected_ids"]), i["affected_ids"][0]]}
+        for i in raw["issues"]
+    ]
+    text = json.dumps(raw, indent=1, sort_keys=True)
+    (copy_dir / "truth.json").write_text(text, encoding="utf-8")
+    loaded = read_episode(copy_dir)
+    assert [i.affected_ids for i in loaded.truth.issues] == [
+        i.affected_ids for i in original.truth.issues
+    ]
+    assert all(list(i.affected_ids) == sorted(set(i.affected_ids)) for i in loaded.truth.issues)
+
+
+def test_paired_copy_with_unsorted_truth_scores_exactly_like_the_original(
+    tmp_path: Path, episode_dir: Path
+) -> None:
+    """The jury's paired check: a remapped copy whose truth is left unsorted scores identically.
+
+    The oracle answers each side with that side's ids and the same inspection steps; after mapping
+    the ids back, the two answers are the same canonical sets.
+    """
+    original = read_episode(episode_dir)
+    copy, id_map = _same_id_remapped_copy(original, seed=11)
+    copy_dir = tmp_path / "pair"
+    write_episode(copy, copy_dir, DEV_SEED)
+    _unsort_truth_on_disk(copy_dir)
+    steps = 7
+    original_findings = oracle_findings(original.truth)
+    copy_findings = oracle_findings(read_episode(copy_dir).truth)
+    before = judge_adapter.score_episode(str(episode_dir), {"findings": original_findings}, steps)
+    after = judge_adapter.score_episode(str(copy_dir), {"findings": copy_findings}, steps)
+    assert before["f1"] == 1.0 and before["tp"] == len(original.truth.issues)
+    assert after == before  # tp/fp/fn, precision, recall, f1 and the return all match
+    inverse = {new: old for old, new in id_map.items()}
+    mapped_back = sorted(
+        tuple(sorted(inverse.get(i, i) for i in f["affected_ids"])) for f in copy_findings
+    )
+    assert mapped_back == sorted(tuple(sorted(f["affected_ids"])) for f in original_findings)
+    env, _ = _closed(copy_dir)  # and the copy is playable through the adapter
+    assert env.step({"name": "list_records", "args": {"table": "invoices"}})[0]["error"] is None
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing", "corrupt", "incomplete", "short_header", "short_row", "deep_nesting"]
+)
+def test_score_episode_on_an_unreadable_episode_fails_cleanly(
+    tmp_path: Path, episode_dir: Path, damage: str
+) -> None:
+    """An episode the scorer cannot read is one documented failure, never a raw traceback.
+
+    The directory belongs to the harness, so this is not scored as -1: `return` is what ranks a
+    team, and a path the harness could not provide is not the team's answer. The message carries
+    no path and no parser detail, exactly as `reset` already behaves for the same directory.
+    """
+    broken = tmp_path / damage
+    if damage != "missing":
+        write_episode(read_episode(episode_dir), broken, DEV_SEED)
+        ledger = broken / "ledger.csv"
+        if damage == "corrupt":
+            (broken / "truth.json").write_text("{not json", encoding="utf-8")
+        elif damage == "incomplete":
+            (broken / "truth.json").unlink()
+        elif damage == "short_header":  # a header without the columns the rows need (KeyError)
+            ledger.write_text("row_id,timestamp\nL-000001,x\n", encoding="utf-8")
+        elif damage == "short_row":  # a row shorter than the header (TypeError on the amounts)
+            header = ledger.read_text(encoding="utf-8").split("\n")[0]
+            ledger.write_text(f"{header}\nL-000001\n", encoding="utf-8")
+        else:  # JSON nested past the interpreter's limit (RecursionError)
+            depth = sys.getrecursionlimit() * 10
+            (broken / "truth.json").write_text("[" * depth + "]" * depth, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"^episode could not be loaded$") as caught:
+        judge_adapter.score_episode(str(broken), {"findings": []}, 5)
+    text = str(caught.value)
+    assert str(broken) not in text and damage not in text and "json" not in text.lower()
+    # raised `from None`: the original OSError or parser error is never shown with the failure
+    assert caught.value.__cause__ is None and caught.value.__suppress_context__ is True
+    # reset answers the same way for the same directory, and the loaded episode survives
+    env, _ = _closed(episode_dir)
+    with pytest.raises(ValueError, match=r"^episode could not be loaded$"):
+        env.reset(0, {"mode": "closed", "episode_dir": str(broken)})
+    assert env.step({"name": "list_records", "args": {"table": "ledger"}})[0]["error"] is None
