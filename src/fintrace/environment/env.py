@@ -114,7 +114,7 @@ class FintraceEnv:
     def _load(self, private: PrivateEpisode) -> ResetObservation:
         self._detach_logger()  # a logger belongs to one episode: never record the next one
         if self._episode is not None:
-            clear_cache(self._episode.manifest.episode_id)
+            clear_cache(self._episode)  # the view of the object we leave, never by episode_id
         if self._private is not None:
             self._truth_store.clear(self._private.public.manifest.episode_id)
         public = private.public

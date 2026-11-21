@@ -8,8 +8,10 @@ import pytest
 
 from fintrace.constants import ENV_VERSION, EPISODE_ID_PATTERN, MAX_STEPS
 from fintrace.environment.env import FintraceEnv
-from fintrace.models import JsonObject, ToolResult
+from fintrace.generator.build import build_episode
+from fintrace.models import EpisodeConfig, JsonObject, PrivateEpisode, ToolResult
 from fintrace.reward.official import official_reward
+from fintrace.transforms.robustness import remap_ids
 
 LIST_LEDGER_1: JsonObject = {
     "tool": "list_records",
@@ -261,3 +263,37 @@ def test_episode_over_is_no_op() -> None:
     assert (terminated, truncated) == (False, True) and truncated_env.state.step_count == MAX_STEPS
     with pytest.raises(RuntimeError, match="reset"):
         FintraceEnv().step(LIST_LEDGER_1)
+
+
+def _get(env: FintraceEnv, table: str, record_id: str) -> ToolResult:
+    return env.step({"tool": "get_record", "args": {"table": table, "id": record_id}})[0]
+
+
+def test_two_envs_same_episode_id_keep_their_own_views() -> None:
+    """Two environment objects holding different episodes under the same episode_id (a jury
+    paired copy with remapped ids) never share a tool view: each serves exactly its own records."""
+    original = build_episode(42, EpisodeConfig())
+    remapped, mapping = remap_ids(original, 7)
+    episode_id = original.public.manifest.episode_id
+    manifest = remapped.public.manifest.model_copy(update={"episode_id": episode_id})
+    public = remapped.public.model_copy(update={"manifest": manifest})
+    truth = remapped.truth.model_copy(update={"episode_id": episode_id})
+    copy: PrivateEpisode = remapped.model_copy(update={"public": public, "truth": truth})
+    old_id = original.public.ledger[0].row_id
+    new_id = mapping.id_map[old_id]
+    env_x = FintraceEnv()
+    env_x.reset_loaded(original)
+    assert _get(env_x, "ledger", old_id).ok  # the view of the original is built and cached
+    env_y = FintraceEnv()
+    env_y.reset_loaded(copy)
+    hit = _get(env_y, "ledger", new_id)
+    assert hit.ok and hit.result is not None and hit.result["record"]["row_id"] == new_id
+    miss = _get(env_y, "ledger", old_id)
+    assert miss.error is not None and miss.error.code == "NOT_FOUND"
+    page = _list(env_y, "ledger", None, 3)
+    assert page.result is not None
+    copy_rows = {row.row_id for row in copy.public.ledger}
+    assert all(record["row_id"] in copy_rows for record in page.result["records"])
+    assert _get(env_x, "ledger", old_id).ok  # the first env is unaffected by the second
+    stale = _get(env_x, "ledger", new_id)
+    assert stale.error is not None and stale.error.code == "NOT_FOUND"

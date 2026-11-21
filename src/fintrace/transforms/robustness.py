@@ -12,9 +12,10 @@ story in different clothes, so an agent that generalises scores the same on both
                      dates together, so relative chronology, period membership and rates are kept
 
 Transforms are deterministic in ``(transform name, episode id, seed)``. Each one gives the result
-a derived ``episode_id``: the tool view cache and the truth store are keyed by it, and the
-transformed world must never be confused with the original. Nothing here imports the evaluator,
-the environment or the agents.
+a derived ``episode_id`` so that a transformed world is never confused with the original in logs,
+reports and the per-environment truth store (the tool view cache is keyed by the loaded episode
+object, not by its id, so even a copy that keeps the original id is served correctly). Nothing
+here imports the evaluator, the environment or the agents.
 """
 
 from __future__ import annotations

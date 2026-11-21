@@ -4,7 +4,7 @@ BC_VENV ?= experiments/bc_proof/.venv
 BC_INDEX_URL ?= https://download.pytorch.org/whl/cpu
 
 # `data` is also a directory in the tree: it must stay .PHONY or make reports it "up to date".
-.PHONY: install test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap ocel card bc-proof clean docker-build docker-run docker-verify
+.PHONY: install check test test-slow test-all lint schemas data data-verify data-dry demo baselines trajectories attacks oracle-gap ocel card bc-proof clean docker-build docker-run docker-verify
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt -e ".[dev]"
@@ -20,6 +20,16 @@ test-all:
 
 lint:
 	$(PYTHON) -m ruff check src/ tests/ scripts/ judge_adapter.py
+
+# One command to verify everything a reviewer needs on a plain machine (no Docker): lint, the
+# fast suite and the dataset checksums. Prints one PASS/FAIL line; non-zero on any failure.
+check:
+	@start=$$(date +%s); \
+	if $(MAKE) --no-print-directory lint && $(MAKE) --no-print-directory test && $(MAKE) --no-print-directory data-verify; then \
+		echo "check: PASS (lint clean, fast suite green, data-verify ok; $$(( $$(date +%s) - start ))s)"; \
+	else \
+		echo "check: FAIL (see the first failing step above)"; exit 1; \
+	fi
 
 schemas:
 	$(PYTHON) scripts/generate_schemas.py

@@ -87,10 +87,10 @@ lines), the determinism tests of the oracle-gap and OCEL modules.
 
 ## Pillar 4: Adversarial robustness
 
-*The reward holds against policies built to exploit it.*
+*The reward resists the twenty attack policies we built against it; its known gaps are listed under Limitations.*
 
 - `evaluator/matcher.py` matches findings to issues one-to-one (maximum matching, so flooding
-  and duplication cannot buy extra true positives), requires the right type and currency,
+  and duplication do not buy extra true positives), requires the right type and currency,
   canonical ids, an amount within `max(1, floor(0.001 × expected))` and an evidence superset of
   one acceptable set. `reward/official.py` is `clip(2·F1 − 1 − 0.002·steps, −1, 1)`: silence on
   erroneous books and false accusations on clean books both score −1, and every inspection step
@@ -101,7 +101,7 @@ lines), the determinism tests of the oracle-gap and OCEL modules.
   on the held-out dev split: all 20 are defeated (mean ≤ −0.3; best −0.782; 15 on the −1.000
   floor), and the report is regenerated and byte-compared in CI.
 - `transforms/robustness.py` remaps ids, shuffles records and shifts time; rewards of the oracle
-  and the rule-based baseline are invariant, so no policy can learn the generator's labelling.
+  and the rule-based baseline are invariant, so a policy cannot rely on the generator's labelling.
 - `diagnostics/oracle_gap.py` isolates one error type per episode and measures the gap between
   the oracle and every policy: the rule-based baseline is 4.1× further from the oracle on
   `payment_allocation` than on `duplicate_invoice`, while every attacker stays at the floor on
@@ -110,6 +110,41 @@ lines), the determinism tests of the oracle-gap and OCEL modules.
 Held by: `tests/reward/` (matcher, adversarial matcher, metrics, reward, adversarial reward),
 `tests/robustness/test_attackers.py`, `tests/integration/test_run_attacks.py`,
 `tests/robustness/test_transforms.py`, `tests/contract/test_oracle_gap.py`.
+
+## Limitations
+
+Honest boundaries of the current reward, isolation and generator; none of them is hidden behind a
+scenario-specific test, and each names the code that defines it.
+
+- **Amount tolerance is not zero.** A claimed amount matches when
+  `|claimed − expected| ≤ max(1, floor(0.001 × expected))` minor units (`constants.py`
+  `DEFAULT_TOLERANCE_FRAC`, `MIN_TOLERANCE_MINOR`; `evaluator/matcher.py`). On a 10 000-unit issue a
+  claim of 10 010 still counts; a zero tolerance per error type cannot be configured today.
+- **Evidence ids are checked as a set, not for existence.** A finding matches when its `evidence_ids`
+  include one acceptable set; extra ids, existing or not, are ignored, so a finding that adds an
+  unknown id to a complete set is still a true positive.
+- **Strict structure voids the whole submission.** An unknown `type`, a currency that is not three
+  upper-case letters, an id outside `^[A-Za-z0-9_\-:.]+$` or any limit breach (30 findings, 10 evidence
+  ids, 1 000 characters) is a validation error of the submission: `score_episode` returns −1 with null
+  metrics instead of counting that one finding as a false positive among the others.
+- **An invalid submit inside an episode does not end it.** The environment answers
+  `INVALID_ACTION`, charges the step and keeps the episode open; only `score_episode` (the jury's
+  closed call) turns a structurally invalid submission into −1.
+- **Isolation is in-process.** The environment object holds the `PrivateEpisode` and an
+  evaluator-side `TruthStore`; the tools read `PublicEpisode` only and an import firewall keeps
+  `agents/*` away from the evaluator, but the policy must be run in a separate process by the
+  harness for the boundary to be a process boundary.
+- **The 60 s budget is enforced at the next step.** A policy that never calls `step` again is not
+  pre-empted; the harness has to stop it (then the empty findings are scored).
+- **Error sub-variants and the accounting policy are not configurable.** `payment_allocation`
+  draws missing / partial / transposed / wrong-reference, `fx_error` draws wrong date / perturbed
+  rate from the seeded RNG; the accounting policy (rate-date rule, rounding, period assignment
+  field) is fixed in the generator and only the period timezone comes from the config; some seeds
+  are infeasible for the interacting scenarios and `generate_episode` raises on them instead of
+  falling back.
+- **One evidence route of `period_misclassification` names a journal id** that cannot be fetched
+  as a record (journal ids are visible on ledger rows but `get_record` is keyed by `row_id`); the
+  document route and the ledger-row route of the same issue are reachable.
 
 ## Pillar 5: Interoperability with audit tooling
 

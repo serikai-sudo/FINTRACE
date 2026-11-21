@@ -5,9 +5,13 @@ Built for Genesis Hackathon 2026 (FinTech track).
 
 ## Quick Start
 
+To verify everything in one command: `make check` (lint, the fast test suite and the dataset
+checksums; prints one `check: PASS` line, non-zero on any failure; needs `make install` once).
+
 ```bash
 make install   # pinned runtime deps + package (editable) + dev tools
-make test      # fast tests (pytest -m "not slow"), 479 tests
+make check     # lint + fast tests + data-verify in one command, one PASS/FAIL line
+make test      # fast tests (pytest -m "not slow"), 481 tests
 make test-slow # seed sweeps and other slow tests (pytest -m slow), 21 tests
 make test-all  # everything
 make lint      # ruff over src/ tests/ scripts/ judge_adapter.py (zero findings)
@@ -39,7 +43,7 @@ target or a committed document: [docs/compliance_matrix.md](docs/compliance_matr
 | Data / ground truth (25) | consistency checks `tests/contract/test_validate.py`; per-type injector suites `tests/contract/test_injector_duplicate.py`, `test_injector_payment.py`, `test_injector_fx_error.py`, `test_injector_period.py` (each with `test_independent_check_passes_on_injected` and a 200-seed sweep); interacting scenarios `tests/contract/test_interacting_scenarios.py`; decoys `tests/contract/test_decoys.py::test_similar_invoices_not_caught_as_duplicate`; the committed dataset `tests/repro/test_data_integration.py::test_all_generated_episodes_validate` and `make data-verify`; Benford and 700-seed clean sweeps in `tests/contract/test_generator.py` (slow) |
 | Reward reliability (25) | matcher `tests/reward/test_matcher.py` and `tests/reward/test_matcher_adversarial.py` (one-to-one maximum matching, tolerance edges, evidence supersets); formula and clipping `tests/reward/test_official_reward.py`, `tests/reward/test_reward_adversarial.py`; 20 attackers `tests/robustness/test_attackers.py::test_attacker_scores_negative_on_dev` and `tests/integration/test_run_attacks.py::test_run_attacks_full_dev_split` (slow) → [reward robustness report](docs/reward_robustness_report.md); per-type floor `tests/contract/test_oracle_gap.py::test_attackers_uniform_floor`; transform invariance `tests/robustness/test_transforms.py` |
 | Reproducibility / generalization (15) | `tests/repro/test_determinism.py::test_deterministic_regeneration`; byte-identical episode files `tests/contract/test_judge_adapter.py::test_generate_episode_writes_all_files`; disjoint train/dev seeds `tests/contract/test_generate_data.py::test_train_dev_disjoint_seeds`; full dataset regeneration `tests/repro/test_data_integration.py::test_generate_data_timing` (slow); trajectory rerun identity `tests/repro/test_record_trajectories.py::test_record_trajectories_dev_with_rerun_check` (slow); held-out invariance `tests/robustness/test_transforms.py::test_remap_ids_rule_based_f1_matches`, `::test_shift_time_rule_based_f1_matches`; held-out dev results [docs/results_dev.md](docs/results_dev.md) and the [oracle-gap report](docs/oracle_gap_report.md) |
-| Engineering (10) | CI `.github/workflows/ci.yml` (lint + fast suite + `make data-verify`, then the slow suite, and a `docker` job that builds the image and runs the jury protocol inside it with `--network none`); `make lint` (ruff with mandatory annotations, no wall clock, no global RNG, no `print` in `src/`); offline guarantee `tests/integration/test_jury_protocol_offline.py::test_jury_protocol_runs_offline`, lean runtime `::test_runtime_requirements_lean`; `Dockerfile` (digest-pinned base, non-root, `src/` + `judge_adapter.py` only), `make docker-verify`, [docs/docker_offline_verification.md](docs/docker_offline_verification.md); 500 tests, 479 fast / 21 slow |
+| Engineering (10) | CI `.github/workflows/ci.yml` (lint + fast suite + `make data-verify`, then the slow suite, and a `docker` job that builds the image and runs the jury protocol inside it with `--network none`); `make lint` (ruff with mandatory annotations, no wall clock, no global RNG, no `print` in `src/`); offline guarantee `tests/integration/test_jury_protocol_offline.py::test_jury_protocol_runs_offline`, lean runtime `::test_runtime_requirements_lean`; `Dockerfile` (digest-pinned base, non-root, `src/` + `judge_adapter.py` only), `make docker-verify`, [docs/docker_offline_verification.md](docs/docker_offline_verification.md); 502 tests, 481 fast / 21 slow |
 
 ## Jury adapter
 
@@ -109,6 +113,31 @@ observation, reward, terminated, truncated, info = env.step(
 judge_adapter.score_episode("/tmp/ep", {"findings": [...]}, inspection_steps=1)
 ```
 
+## Trajectory format
+
+`make trajectories` records every baseline on the dev split as `trajectories/<policy>_<split>_<seed>.jsonl`
+(the seed lives only in the file name); `trajectories/rule_based_dev_10000.jsonl` is the committed sample.
+One line per step, canonical JSON (sorted keys, compact separators, UTF-8), validated by
+`schemas/trajectory.schema.json` and leak-scanned by `fintrace.logging.trajectory` before it is written.
+Fields of one line:
+
+| Field | Meaning |
+|---|---|
+| `episode_id` | Public id of the episode (`ep_` + 10 to 16 hex digits), the same value as in `manifest.json`. |
+| `step` | 1-based index of the action within the episode, 1 to 100; every call counts, including rejected ones. |
+| `action` | The action exactly as the agent sent it: `tool` (one of `list_records`, `get_record`, `get_document`, `calculator`, `submit`), `args` (the tool arguments, e.g. `{"table": "ledger", "cursor": null, "limit": 50}` or the submitted findings) and an optional `thought` (the agent's own short note, at most 500 characters). A rejected action is stored as received; a non-object action is stored as `{"invalid_action": "<type>"}`. |
+| `observation.ok` | `true` when the tool ran, `false` when the environment answered with an error. |
+| `observation.tool` | The tool the environment dispatched to (or the one it tried to parse on an invalid action). |
+| `observation.result` | The tool's result object (records page, record, document, calculator value, submit status) or `null` on an error. |
+| `observation.error` | `null`, or `{"code": ...}` with one of `INVALID_ACTION`, `INVALID_TABLE`, `NOT_FOUND`, `INVALID_CURSOR`, `CALC_ERROR`, `EPISODE_OVER`, `INVALID_SUBMISSION`; never a message, path or echoed input. |
+| `observation.steps_used` / `observation.steps_remaining` | The step counters after this action (they add up to 100). |
+| `reward` | The reward handed to the policy for this step: 0.0 on every exploration step, the official terminal reward on the submit step in train mode, or the empty-submission reward on the step that truncates the episode (step or time budget); always within −1 … 1. |
+| `terminated` | `true` on the submit step that ended the episode. |
+| `truncated` | `true` when the step budget (100) or the wall-clock budget ended the episode without a submit. |
+
+A line never carries the seed, the wall clock, `info`, evaluator diagnostics, truth or provenance; the
+leak scanner fails the run on any such token or key.
+
 ## Differentiators
 
 - **D1 — Reward robustness against 20 purpose-built attackers.** Twenty policies in
@@ -142,7 +171,7 @@ judge_adapter.score_episode("/tmp/ep", {"findings": [...]}, inspection_steps=1)
 | P1 Ground-truth integrity | seeded generator, one injector per error type, independent re-derivation of every issue, provenance log |
 | P2 Isolation and leak-proof scoring | `PublicEpisode` / `PrivateEpisode` split, evaluator-side `TruthStore`, import firewall, leak scanner over every surface |
 | P3 Reproducibility and auditability | one `random.Random(seed)`, canonical serialisation, checksummed dataset, replayable trajectories |
-| P4 Adversarial robustness | one-to-one matcher with exact tolerance and evidence rules, 20 attackers, transform invariance, oracle gap |
+| P4 Adversarial robustness | one-to-one matcher with a fixed amount tolerance and superset evidence rules, 20 attackers, transform invariance, oracle gap |
 | P5 Interoperability with audit tooling | jury adapter, OCEL 2.0 export, offline digest-pinned Docker image |
 
 The engineering narrative behind each pillar: [docs/design_note.md](docs/design_note.md).
@@ -151,7 +180,7 @@ The engineering narrative behind each pillar: [docs/design_note.md](docs/design_
 
 Audit agents fail on exactly the cases that matter — duplicate invoices, partial payments, FX errors
 and period misclassification hidden among clean look-alikes — and there is no reproducible
-environment that trains on them with a reward the agent cannot game. FINTRACE generates seeded
+environment that trains on them with a reward that resists the tested attacks. FINTRACE generates seeded
 ledger-and-document episodes with hidden ground truth, exposes them only through audited tools, and
 scores submissions in an isolated evaluator, so that every reward is deterministic and leak-free.
 

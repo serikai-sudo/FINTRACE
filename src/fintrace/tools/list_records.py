@@ -1,8 +1,11 @@
 """list_records: stable-sorted, paginated, compact views of the four public tables.
 
 Also hosts the per-episode view cache shared by get_record / get_document: sorting and indexing
-happen once per episode (keyed by episode_id, cleared by ``FintraceEnv.reset``). Only
-``PublicEpisode`` is ever read here.
+happen once per loaded ``PublicEpisode`` object. The cache is keyed by the identity of that
+object (never by ``episode_id``: two environments in one process may hold different books under
+the same id, e.g. a jury's transformed copy) and each entry keeps a strong reference to its
+episode, so a key can never be reused while its view is cached. ``FintraceEnv`` drops the entry of
+the episode it leaves on reset. Only ``PublicEpisode`` is ever read here.
 """
 
 from __future__ import annotations
@@ -42,17 +45,19 @@ _COMPACT_FIELDS: Final[dict[TableName, tuple[str, ...]]] = {
 _CURSOR_RE: Final[re.Pattern[str]] = re.compile(r"^c_(0|[1-9][0-9]*)$")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class EpisodeView:
-    """Sorted rows and id indexes of one PublicEpisode; built once, never mutated."""
+    """Sorted rows and id indexes of one PublicEpisode object; built once, never mutated."""
 
-    episode_id: str
+    episode: PublicEpisode  # the exact object this view indexes (kept alive while cached)
     rows: dict[TableName, tuple[Record, ...]]
     by_id: dict[TableName, dict[str, Record]]
     documents: dict[str, Invoice | Payment]
 
 
-_SORTED_CACHE: dict[str, EpisodeView] = {}  # episode_id -> view; FintraceEnv.reset clears it
+# id(episode) -> view, insertion-ordered; the view's own reference pins the object, so the id is
+# unique for as long as the entry exists. FintraceEnv clears the entry of the episode it leaves.
+_SORTED_CACHE: dict[int, EpisodeView] = {}
 _CACHE_LIMIT: Final[int] = 8  # envs discarded without reset() must not grow the cache unbounded
 
 
@@ -77,24 +82,27 @@ def _build_view(episode: PublicEpisode) -> EpisodeView:
     }
     documents: dict[str, Invoice | Payment] = {i.doc_id: i for i in invoices}
     documents.update({p.doc_id: p for p in payments})
-    return EpisodeView(episode.manifest.episode_id, rows, by_id, documents)
+    return EpisodeView(episode, rows, by_id, documents)
 
 
 def episode_view(episode: PublicEpisode) -> EpisodeView:
-    """Cached sorted/indexed view of ``episode`` (built on first use)."""
-    view = _SORTED_CACHE.get(episode.manifest.episode_id)
-    if view is None:
+    """Cached sorted/indexed view of this exact ``episode`` object (built on first use)."""
+    key = id(episode)
+    view = _SORTED_CACHE.get(key)
+    if view is None or view.episode is not episode:
         view = _build_view(episode)
         if len(_SORTED_CACHE) >= _CACHE_LIMIT:
             _SORTED_CACHE.pop(next(iter(_SORTED_CACHE)))  # oldest insertion
-        _SORTED_CACHE[episode.manifest.episode_id] = view
+        _SORTED_CACHE[key] = view
     return view
 
 
-def clear_cache(episode_id: str | None) -> None:
-    """Drop the cached view of one episode (called by the environment on reset)."""
-    if episode_id is not None:
-        _SORTED_CACHE.pop(episode_id, None)
+def clear_cache(episode: PublicEpisode | None) -> None:
+    """Drop the cached view of one episode object (called by the environment on reset)."""
+    if episode is not None:
+        view = _SORTED_CACHE.get(id(episode))
+        if view is not None and view.episode is episode:
+            del _SORTED_CACHE[id(episode)]
 
 
 def parse_cursor(cursor: str | None) -> int | None:
