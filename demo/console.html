@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FINTRACE console</title>
+<meta name="description" content="FINTRACE: an offline, reproducible RL environment for financial-audit agents. One static page, every number from a committed artefact.">
+<style>
+:root {
+  --bg: #F6F4EF; --card: #FFFFFF; --line: #E4E0D7; --line-strong: #DAD6CD;
+  --ink: #1C1B19; --ink-2: #4F4C46; --bad: #B8381F; --good: #2F6B3A; --tab: #ECE9E2; --code: #F0EDE6;
+  --serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 18px/1.55 var(--sans); -webkit-font-smoothing: antialiased; font-variant-ligatures: none; }
+a { color: inherit; }
+code { font-family: var(--mono); font-size: 0.95em; background: var(--code); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+.topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 22px 0; border-bottom: 1px solid var(--line); }
+.brand { font: 600 26px/1 var(--serif); letter-spacing: 0.01em; }
+.tagline { color: var(--ink-2); padding-left: 24px; border-left: 1px solid var(--line-strong); }
+.topnav { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px 20px; }
+.topnav a { text-decoration: none; color: var(--ink-2); font-size: 17px; }
+.topnav a:hover { color: var(--ink); text-decoration: underline; }
+.eyebrow { font-size: 16px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-2); }
+.hero { padding: 56px 0 24px; }
+h1 { font: 400 56px/1.08 var(--serif); margin: 14px 0 20px; letter-spacing: -0.01em; max-width: 920px; }
+.lead { font-size: 21px; max-width: 880px; color: var(--ink-2); margin: 0 0 28px; }
+.pills { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 28px; }
+.pill { border: 1px solid var(--line-strong); background: var(--card); border-radius: 999px; padding: 12px 24px; font-size: 18px; }
+.pill.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+.pill.soft { background: var(--tab); }
+.tabs { display: inline-flex; flex-wrap: wrap; gap: 4px; background: var(--tab); border-radius: 999px; padding: 6px; margin: 4px 0 40px; }
+.tabs a { text-decoration: none; font-size: 18px; padding: 12px 22px; border-radius: 999px; color: var(--ink-2); }
+.tabs a.on, .tabs a:hover { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+section { padding: 36px 0 12px; scroll-margin-top: 16px; }
+h2 { font: 400 34px/1.15 var(--serif); margin: 10px 0 14px; }
+.intro { max-width: 880px; color: var(--ink-2); margin: 0 0 26px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 24px; }
+.grid.wide { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); }
+.grid.findings { grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 36px 40px; box-shadow: 0 1px 2px rgba(0,0,0,.04); min-width: 0; }
+.verdict { font: 400 46px/1.1 var(--serif); margin: 26px 0 16px; }
+.big { font: 400 76px/1 var(--serif); margin: 26px 0 18px; }
+.muted { color: var(--ink-2); }
+.good { color: var(--good); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+.scale { margin: 30px 0 8px; }
+.scale-labels { display: flex; justify-content: space-between; font-size: 17px; color: var(--ink-2); margin-bottom: 8px; }
+.scale-track { position: relative; height: 10px; border-radius: 999px; background: linear-gradient(90deg, #C8402A 0%, #D9A520 55%, #3E7C4A 100%); }
+.scale-mark { position: absolute; top: 50%; width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 4px solid var(--good); transform: translate(-50%, -50%); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.scale-mark.small { width: 14px; height: 14px; border-width: 3px; border-color: var(--ink-2); }
+hr { border: 0; border-top: 1px solid var(--line); margin: 26px 0; }
+.kv { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 6px 14px; align-items: baseline; margin: 8px 0; }
+.kv > span:first-child { color: var(--ink-2); font-size: 17px; }
+.kv small { color: var(--ink-2); font-size: 16px; white-space: nowrap; }
+ol.steps { list-style: none; margin: 0; padding: 0; }
+ol.steps li { padding: 18px 0; border-top: 1px solid var(--line); }
+ol.steps li:first-child { border-top: 0; }
+ol.steps li.skip { color: var(--ink-2); padding: 10px 0 10px 24px; border-top: 0; font-size: 17px; }
+.step-head { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+.step-no { font: 600 17px/1 var(--mono); background: var(--ink); color: #fff; border-radius: 999px; padding: 7px 12px; }
+.step-tool { font-family: var(--mono); font-size: 17px; }
+.note { margin: 12px 0 0; }
+.formula { font: 500 26px/1.4 var(--mono); background: var(--code); border-radius: 14px; padding: 18px 24px; overflow-x: auto; margin: 0 0 20px; }
+table { width: 100%; border-collapse: collapse; font-size: 17px; }
+th, td { text-align: left; padding: 12px 14px 12px 0; border-top: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink-2); font-weight: 600; border-top: 0; }
+td.num, th.num { text-align: right; padding-right: 0; }
+.table-wrap { overflow-x: auto; }
+ul.rules { padding-left: 22px; margin: 0; }
+ul.rules li { margin: 8px 0; }
+.arow { display: grid; grid-template-columns: minmax(220px, 1.3fr) minmax(160px, 1fr) 90px; gap: 10px 18px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.arow:first-child { border-top: 0; }
+.arow.reference { border-top: 2px solid var(--line-strong); margin-top: 8px; padding-top: 18px; }
+.aname { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.aname .muted { font-size: 16px; }
+.aname code { align-self: flex-start; }
+.atrack { position: relative; height: 12px; background: var(--code); border-radius: 999px; }
+.afill { position: absolute; top: 0; bottom: 0; background: var(--bad); border-radius: 999px; }
+.afill.grey { background: #8C8980; }
+.athr { position: absolute; top: -6px; bottom: -6px; left: 70%; border-left: 2px dashed var(--ink); }
+.aval { font-family: var(--mono); text-align: right; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 18px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; }
+.stat .n { font: 400 40px/1.05 var(--serif); margin: 8px 0 6px; }
+.cmd { font: 17px/1.7 var(--mono); background: var(--code); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; overflow-x: auto; white-space: pre; }
+footer { padding: 40px 0 56px; color: var(--ink-2); border-top: 1px solid var(--line); margin-top: 36px; }
+@media (max-width: 720px) {
+  body { font-size: 17px; }
+  .wrap { padding: 0 16px; }
+  .tagline { display: none; }
+  .topnav { margin-left: 0; }
+  .hero { padding-top: 36px; }
+  h1 { font-size: 38px; }
+  .lead { font-size: 19px; }
+  h2 { font-size: 28px; }
+  .card { padding: 26px 22px; }
+  .verdict { font-size: 32px; }
+  .big { font-size: 56px; }
+  .formula { font-size: 19px; }
+  .arow { grid-template-columns: 1fr 80px; }
+  .arow .atrack { grid-column: 1 / -1; }
+  .kv { grid-template-columns: 92px minmax(0, 1fr); }
+  .grid.wide { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="topbar">
+  <div class="brand">FINTRACE</div>
+  <div class="tagline">RL environment for audit agents</div>
+  <nav class="topnav">
+    <a href="#overview">Overview</a><a href="#episode">Episode</a><a href="#score">Score</a>
+    <a href="#attacks">Attacks</a><a href="#data">Data</a><a href="#proof">Proof</a><a href="#ship">Ship</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <div class="eyebrow">Genesis Hackathon 2026 · FinTech · Offline RL environment</div>
+  <h1>Audit the books. Find the planted errors. Get a score nobody can game.</h1>
+  <p class="lead">Every episode is a small company's books built from one seed: a ledger, invoices, payments and FX rates.
+  Four kinds of errors are hidden among clean look-alikes. An agent investigates with five tools, at most 100 steps,
+  and submits its findings. A hidden checker compares them with the exact truth and returns one number.</p>
+  <div class="pills">
+    <span class="pill on">Duplicate invoice</span><span class="pill">Payment gap</span><span class="pill">FX error</span>
+    <span class="pill">Wrong period</span><span class="pill soft">5 decoy patterns per dev episode</span>
+  </div>
+  <nav class="tabs">
+    <a class="on" href="#overview">Overview</a><a href="#episode">Episode</a><a href="#score">Score</a>
+    <a href="#attacks">Attacks</a><a href="#data">Data</a><a href="#proof">Proof</a><a href="#ship">Ship</a>
+  </nav>
+</div>
+
+<section id="overview">
+  <div class="grid wide">
+    <article class="card">
+      <div class="eyebrow">Episode verdict</div>
+      <div class="verdict">All four errors found.</div>
+      <p>Episode <code>ep_ebc853af2ffe</code>, seed 10000, built in memory from the embedded demo config:
+      940 ledger rows, 148 documents, 84 invoices, 64 payments,
+      182 daily FX rates. The rule-based auditor used all 100 steps
+      (27 list pages, 9 ledger rows, 63 documents, 1 submit),
+      sent 4 findings and made <strong>0 false alarms</strong>.</p>
+      <div class="scale">
+        <div class="scale-labels"><span>-1</span><span>0</span><span>+1</span></div>
+        <div class="scale-track">
+          <div class="scale-mark small" style="left:83.9%" title="rule-based mean on dev"></div>
+          <div class="scale-mark" style="left:90.1%"></div>
+        </div>
+      </div>
+      <p class="muted">Reported as <span class="good">0.802</span>: 2 x F1 - 1 - 0.002 x 99 inspection steps.
+      -1 means silence or noise, +1 means perfect and free. The small grey dot is the rule-based mean on the ten dev episodes (+0.678).</p>
+    </article>
+    <article class="card">
+      <div class="eyebrow">Return</div>
+      <div class="big">0.802</div>
+      <p><strong>tp 4</strong> · <strong>fp 0</strong> · <strong>fn 0</strong> ·
+      precision <strong>1.000</strong> · recall <strong>1.000</strong> · f1 <strong>1.000</strong></p>
+      <p class="muted">Scale -1 to +1, no units. The 99 inspection steps cost 0.198, so a perfect audit still pays for its time.</p>
+      <hr>
+      <p>Rule-based mean on the ten dev episodes: <strong>+0.678</strong> (from +0.516 to +0.802).
+      The oracle, which reads the truth and only fetches the evidence, gets <strong>+0.975</strong> in 13.3 steps.
+      Random and mark-everything policies get -1.000.</p>
+      <p><a href="#episode">See the steps</a></p>
+    </article>
+  </div>
+</section>
+
+<section id="episode">
+  <div class="eyebrow">Episode</div>
+  <h2>The investigation, in the agent's own words</h2>
+  <p class="intro">11 key steps of 100: the first step, every change of tool, every step where a finding was recorded,
+  and the submit. The notes are the agent's <code>thought</code> field, printed as logged. <code>python -m fintrace --full</code> shows all 100.</p>
+  <article class="card">
+    <ol class="steps">
+<li><div class="step-head"><span class="step-no">step 1</span><span class="step-tool">list_records invoices first page</span></div><p class="note">Starting investigation of ep_ebc853af2ffe: base currency USD, period 2024-12-01 to 2025-03-01 (+05:00), FX rate taken on the transaction date. Scanning invoices for duplicate patterns first.</p></li>
+<li class="skip">... 1 more list_records(invoices) step</li>
+<li><div class="step-head"><span class="step-no">step 3</span><span class="step-tool">list_records payments first page</span></div><p class="note">Invoice scan complete: 84 invoices from 8 counterparties, 13 in foreign currency. Scanning payments for allocation issues.</p></li>
+<li class="skip">... 1 more list_records(payments) step</li>
+<li><div class="step-head"><span class="step-no">step 5</span><span class="step-tool">list_records fx first page</span></div><p class="note">Payment scan complete: 64 payments, 8 in foreign currency (GBP). Loading the FX rate table to re-rate them later.</p></li>
+<li class="skip">... 3 more list_records(fx) steps</li>
+<li><div class="step-head"><span class="step-no">step 9</span><span class="step-tool">list_records ledger first page</span></div><p class="note">FX table loaded: 182 daily rates (EUR-&gt;USD, GBP-&gt;USD). Scanning the ledger to map every journal to its invoice or payment.</p></li>
+<li class="skip">... 18 more list_records(ledger) steps</li>
+<li><div class="step-head"><span class="step-no">step 28</span><span class="step-tool">get_document DOC-0063</span></div><p class="note">Ledger scan complete (940 rows). Plan: 1 duplicate candidate pairs, 1 journals or documents outside the period, 8 foreign-currency payments to re-rate, 64 payment documents to reconcile; 73 steps left. Checking INV-0065 against INV-0081: same counterparty E-0007, same total 2455 USD, issued 0 days apart. Reading DOC-0063 to compare line items.</p></li>
+<li class="skip">... 1 more get_document step</li>
+<li><div class="step-head"><span class="step-no">step 30</span><span class="step-tool">get_record ledger L-000189</span></div><p class="note">INV-0065 and INV-0081: identical 1 line items, duplicate invoice recorded. Journal of INV-0057 is posted outside the reporting period: reading ledger row L-000189 for its journal id and amount.</p></li>
+<li><div class="step-head"><span class="step-no">step 31</span><span class="step-tool">get_record ledger L-000500</span></div><p class="note">invoice INV-0057 dated 2024-12-07: journal J-000237 posted 2024-11-30T19:11, outside the period, period misclassification recorded. Re-rating foreign payment PAY-0012 (1379 GBP on 2024-12-16): reading ledger row L-000500 for the booked USD amount.</p></li>
+<li class="skip">... 1 more get_record(ledger) step</li>
+<li><div class="step-head"><span class="step-no">step 33</span><span class="step-tool">get_record ledger L-000018</span></div><p class="note">PAY-0053: booked 5784 USD but 4554 GBP at the policy rate 1.3082 (2024-12-11) is 5958, FX error of 174 recorded. Re-rating foreign payment PAY-0072 (127427 GBP on 2025-02-05): reading ledger row L-000018 for the booked USD amount.</p></li>
+<li class="skip">... 5 more get_record(ledger) steps</li>
+<li><div class="step-head"><span class="step-no">step 39</span><span class="step-tool">get_document DOC-0059</span></div><p class="note">PAY-0023: booked 1748 USD matches 1379 GBP at 1.2676 (2025-01-14), clean. Reconciling payment PAY-0036 (1607 USD) against its allocations: reading DOC-0059.</p></li>
+<li class="skip">... 24 more get_document steps</li>
+<li><div class="step-head"><span class="step-no">step 64</span><span class="step-tool">get_document DOC-0080</span></div><p class="note">PAY-0080: allocates 608673 of 1127172 USD to INV-0042, allocation gap of 518499 recorded. Reconciling payment PAY-0020 (80928 USD) against its allocations: reading DOC-0080.</p></li>
+<li class="skip">... 35 more get_document steps</li>
+<li><div class="step-head"><span class="step-no">step 100</span><span class="step-tool">submit (4 findings)</span></div><p class="note">PAY-0065: fully allocated to INV-0052, clean. Investigation complete after 99 steps (step budget nearly exhausted): submitting 4 findings: 1 duplicate_invoice, 1 fx_error, 1 payment_allocation, 1 period_misclassification.</p></li>
+    </ol>
+  </article>
+  <h2 style="margin-top:36px">Findings submitted (4)</h2>
+  <div class="grid findings">
+<article class="card finding"><div class="eyebrow">Finding 1 · Duplicate invoice</div><div class="kv"><span>type</span><code>duplicate_invoice</code></div><div class="kv"><span>affected</span><code>INV-0065, INV-0081</code></div><div class="kv"><span>amount</span><span><code>2455 USD</code> <small>minor units</small></span></div><div class="kv"><span>evidence</span><code>DOC-0063, DOC-0106</code></div><p class="muted">Invoices INV-0065 and INV-0081: same counterparty E-0007, same total 2455 USD, identical 1 line items, issued 0 days apart.</p></article>
+<article class="card finding"><div class="eyebrow">Finding 2 · FX error</div><div class="kv"><span>type</span><code>fx_error</code></div><div class="kv"><span>affected</span><code>INV-0087, PAY-0053</code></div><div class="kv"><span>amount</span><span><code>174 USD</code> <small>minor units</small></span></div><div class="kv"><span>evidence</span><code>DOC-0144, DOC-0177</code></div><p class="muted">Payment PAY-0053 of 4554 GBP is booked at 5784 USD; the policy rate 1.3082 of 2024-12-11 gives 5958 USD (difference 174).</p></article>
+<article class="card finding"><div class="eyebrow">Finding 3 · Wrong period</div><div class="kv"><span>type</span><code>period_misclassification</code></div><div class="kv"><span>affected</span><code>INV-0057, J-000237</code></div><div class="kv"><span>amount</span><span><code>8505562 USD</code> <small>minor units</small></span></div><div class="kv"><span>evidence</span><code>DOC-0103, L-000189, L-000305</code></div><p class="muted">Journal J-000237 of invoice INV-0057 dated 2024-12-07 is posted at 2024-11-30T19:11:31+05:00, on the other side of the reporting period boundary from its document.</p></article>
+<article class="card finding"><div class="eyebrow">Finding 4 · Payment gap</div><div class="kv"><span>type</span><code>payment_allocation</code></div><div class="kv"><span>affected</span><code>INV-0042, PAY-0080</code></div><div class="kv"><span>amount</span><span><code>518499 USD</code> <small>minor units</small></span></div><div class="kv"><span>evidence</span><code>DOC-0116, DOC-0078</code></div><p class="muted">Payment PAY-0080 of 1127172 USD allocates 608673 to INV-0042 (difference 518499).</p></article>
+  </div>
+</section>
+
+<section id="score">
+  <div class="eyebrow">Score</div>
+  <h2>One number, hard to fool</h2>
+  <p class="intro">The checker never trusts the agent's words. It matches each finding to one hidden issue, counts hits and misses,
+  and turns them into F1. Every step before the submit costs a little, so reading everything is not free.</p>
+  <div class="grid wide">
+    <article class="card">
+      <div class="formula">return = clip(2 x F1 - 1 - 0.002 x inspection_steps, -1, 1)</div>
+      <div class="table-wrap"><table>
+        <tr><th>Field</th><th>Meaning</th><th class="num">This episode</th></tr>
+        <tr><td><code>tp</code></td><td>findings that match a hidden issue</td><td class="num">4</td></tr>
+        <tr><td><code>fp</code></td><td>findings that match nothing (false alarms)</td><td class="num">0</td></tr>
+        <tr><td><code>fn</code></td><td>hidden issues nobody reported</td><td class="num">0</td></tr>
+        <tr><td><code>precision</code></td><td>tp / (tp + fp)</td><td class="num">1.000</td></tr>
+        <tr><td><code>recall</code></td><td>tp / (tp + fn)</td><td class="num">1.000</td></tr>
+        <tr><td><code>f1</code></td><td>balance of the two</td><td class="num">1.000</td></tr>
+        <tr><td><code>return</code></td><td>the formula above, 99 inspection steps</td><td class="num"><strong>0.802</strong></td></tr>
+      </table></div>
+    </article>
+    <article class="card">
+      <div class="eyebrow">How a finding is matched</div>
+      <ul class="rules" style="margin-top:14px">
+        <li>One hidden issue can be matched by one finding only. Sending the same finding 30 times earns one hit and 29 false alarms.</li>
+        <li>The type and the currency must be right.</li>
+        <li>The affected ids must be the right ones, in any order.</li>
+        <li>The amount must be within 0.1 % of the true amount (at least 1 minor unit).</li>
+        <li>The evidence must include the documents that prove the issue. Empty or neighbouring evidence does not count.</li>
+        <li>During the episode the agent sees reward 0 at every step. The score is computed once, by the checker, from the hidden truth.</li>
+      </ul>
+      <hr>
+      <p class="muted">Limits: 50 records per page, 30 findings per submission, 100 steps and 60 seconds per episode.</p>
+    </article>
+  </div>
+</section>
+
+<section id="attacks">
+  <div class="eyebrow">Attacks</div>
+  <h2>20 of 20 attack policies lose.</h2>
+  <p class="intro">Each attacker tries one trick to earn reward without auditing: flooding, empty evidence, swapped currency,
+  amounts at the edge of the tolerance, wrong types, fake ids, burning the budget. All 20 ran on the ten dev episodes.
+  An attacker is defeated when its mean return stays below -0.3 (the dashed line). The red bar shows how far below zero it ends.
+  Worst case for us: <code>undersubmit</code> at <strong>-0.782</strong>; 15 of 20 sit on the -1.000 floor.</p>
+  <article class="card">
+<div class="arow"><div class="aname"><code>undersubmit</code><span class="muted">exactly one candidate finding</span></div><div class="atrack"><div class="afill" style="left:21.8%;width:78.2%"></div><div class="athr"></div></div><div class="aval">-0.782</div></div>
+<div class="arow"><div class="aname"><code>shotgun</code><span class="muted">30 findings over every id pair in sight, all four types</span></div><div class="atrack"><div class="afill" style="left:20.3%;width:79.7%"></div><div class="athr"></div></div><div class="aval">-0.797</div></div>
+<div class="arow"><div class="aname"><code>tolerance_edge</code><span class="muted">candidate amounts at +tol, -tol and +tol+1 of the 0.1 % tolerance</span></div><div class="atrack"><div class="afill" style="left:20.3%;width:79.7%"></div><div class="athr"></div></div><div class="aval">-0.797</div></div>
+<div class="arow"><div class="aname"><code>explanation_stuffing</code><span class="muted">candidate findings with a 1000-character forensic explanation</span></div><div class="atrack"><div class="afill" style="left:20.3%;width:79.7%"></div><div class="athr"></div></div><div class="aval">-0.797</div></div>
+<div class="arow"><div class="aname"><code>duplicate_flood</code><span class="muted">the best candidate finding repeated 30 times</span></div><div class="atrack"><div class="afill" style="left:4.9%;width:95.1%"></div><div class="athr"></div></div><div class="aval">-0.951</div></div>
+<div class="arow"><div class="aname"><code>evidenceless</code><span class="muted">20 plausible findings with evidence_ids=[]</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>currency_swap</code><span class="muted">correct candidate fields, currency swapped to another code in the books</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>id_permutation</code><span class="muted">candidate amount/currency with random INV/PAY id permutations</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>submit_at_1</code><span class="muted">empty submission at step 1 (bet on clean books)</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>wrong_type</code><span class="muted">candidate pairs reported under the three other issue types</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>near_miss_evidence</code><span class="muted">correct candidate fields, evidence = neighbouring document ids</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>oversubmit_same_type</code><span class="muted">30 duplicate_invoice findings over random invoice pairs</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>zero_amount</code><span class="muted">correct candidate fields with claimed_amount_minor = 0</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>unicode_id</code><span class="muted">candidate ids with a Cyrillic look-alike letter, then empty submission</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>empty_evidence</code><span class="muted">exact candidate findings with evidence_ids=[]</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>budget_burner</code><span class="muted">list all four tables twice, then submit nothing</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>calculator_spam</code><span class="muted">99 calculator calls, then submit nothing</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>typo_type</code><span class="muted">candidate findings with type &#x27;duplicate_invoices&#x27;, then empty submission</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>cross_episode</code><span class="muted">candidate findings submitted under another episode id, then empty submission</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow"><div class="aname"><code>amount_bomb</code><span class="muted">candidate findings with claimed_amount_minor = 10^12</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
+<div class="arow reference"><div class="aname"><code>pairs_only</code><span class="muted">reference, not an attack: the strongest no-audit heuristic (flags every look-alike pair)</span></div><div class="atrack"><div class="afill grey" style="left:46.0%;width:54.0%"></div><div class="athr"></div></div><div class="aval">-0.540</div></div>
+  </article>
+  <h2 style="margin-top:36px">Does the reward tell error types apart?</h2>
+  <p class="intro">3 paired episodes per type: the same books once clean and once with a single planted error.
+  The gap is the oracle's return minus the policy's return. The rule-based auditor is 4.1 times further from the oracle
+  on payment gaps than on duplicate invoices, so the environment gives a gradient, not a pass or fail bit.
+  Every attacker's gap is between 1.33 and 2.00 on every type; the oracle scores 1.000 on clean books.
+  24 policies x 5 book types x 3 episodes.</p>
+  <article class="card">
+    <div class="table-wrap"><table>
+      <tr><th>Planted error</th><th>Rule-based return</th><th>Oracle return</th><th>Gap</th></tr>
+<tr><td><code>duplicate_invoice</code></td><td>0.802</td><td>0.996</td><td><strong>0.19</strong></td></tr>
+<tr><td><code>payment_allocation</code></td><td>0.201</td><td>0.996</td><td><strong>0.79</strong></td></tr>
+<tr><td><code>fx_error</code></td><td>0.802</td><td>0.996</td><td><strong>0.19</strong></td></tr>
+<tr><td><code>period_misclassification</code></td><td>0.802</td><td>0.998</td><td><strong>0.20</strong></td></tr>
+    </table></div>
+  </article>
+</section>
+
+<section id="data">
+  <div class="eyebrow">Data</div>
+  <h2>Twenty committed episodes, byte for byte</h2>
+  <p class="intro">Same seed and same config give the same files, always. Seeds that cannot host a planted error are skipped and listed, never patched by hand.</p>
+  <div class="stats">
+    <div class="stat"><div class="eyebrow">Episodes</div><div class="n">10 + 10</div>
+      <div class="muted">train + dev, config hash <code>aa6f0ac73b16</code></div></div>
+    <div class="stat"><div class="eyebrow">Verified</div><div class="n">20 / 20</div>
+      <div class="muted"><code>make data-verify</code>: All checksums match. (20 episodes)</div></div>
+    <div class="stat"><div class="eyebrow">Per dev episode</div><div class="n">8 + 5</div>
+      <div class="muted">planted issues (4 types + 2 interacting scenarios) + decoys that are not errors</div></div>
+    <div class="stat"><div class="eyebrow">Leak scan</div><div class="n">2000</div>
+      <div class="muted">20 episodes x 100 observation surfaces, plus 10000 fuzzed actions; any truth token fails the suite</div></div>
+    <div class="stat"><div class="eyebrow">Train seeds</div><div class="n" style="font-size:24px">1001, 1002, 1005, 1006, 1007, 1008, 1009, 1010, 1011, 1012</div>
+      <div class="muted">skipped: 1000, 1003, 1004</div></div>
+    <div class="stat"><div class="eyebrow">Dev seeds</div><div class="n" style="font-size:24px">10000, 10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10012</div>
+      <div class="muted">skipped: 10009, 10010, 10011</div></div>
+    <div class="stat"><div class="eyebrow">Process-mining export</div><div class="n">100 events</div>
+      <div class="muted">OCEL 2.0 log of the sample investigation: 343 objects of 5 types (episode, invoices, payments, FX rates, findings)</div></div>
+    <div class="stat"><div class="eyebrow">The agent never sees</div><div class="n" style="font-size:24px">truth.json · provenance.json · the seed</div>
+      <div class="muted">not in observations, tool results, errors or logs; tests scan all of them</div></div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="eyebrow">Proof</div>
+  <h2>A small model learns the auditor on a CPU</h2>
+  <div class="grid wide">
+    <article class="card">
+      <p>We recorded the rule-based auditor on 40 training episodes (3844 steps) and trained a
+      two-layer network on 37 features taken only from what the agent had seen so far. On 10 unseen dev episodes
+      (1000 steps) it predicts the expert's next tool with accuracy <strong>0.968</strong> and the tool plus table with
+      <strong>0.968</strong>. Chance is 0.20 and 0.125; always guessing the most common
+      action gives 0.511. Training took 3.5 seconds on 2 CPU threads, 40 epochs, seed 0.</p>
+      <div class="table-wrap"><table>
+        <tr><th>Tool</th><th>Share of expert steps</th><th>Recall on dev</th></tr>
+<tr><td><code>calculator</code></td><td>0.000</td><td>n/a</td></tr>
+<tr><td><code>get_document</code></td><td>0.511</td><td>0.965</td></tr>
+<tr><td><code>get_record</code></td><td>0.172</td><td>0.942</td></tr>
+<tr><td><code>list_records</code></td><td>0.307</td><td>1.000</td></tr>
+<tr><td><code>submit</code></td><td>0.010</td><td>0.600</td></tr>
+      </table></div>
+      <p class="muted" style="margin-top:18px">Honest limit: this proves the observations carry enough signal to learn the expert's actions.
+      It is not a rollout and claims no reward of its own. torch lives only in <code>experiments/bc_proof/</code>, never in the engine or the image.</p>
+    </article>
+    <article class="card">
+      <div class="eyebrow">Held-out accuracy</div>
+      <div class="big">0.968</div>
+      <p class="muted">next tool, 1000 unseen steps</p>
+      <hr>
+      <div class="kv"><span>chance</span><strong>0.20</strong></div>
+      <div class="kv"><span>majority</span><strong>0.511</strong></div>
+      <div class="kv"><span>pass rule</span><span>at least 0.80, and majority + 0.15</span></div>
+      <div class="kv"><span>status</span><span class="good">PASS</span></div>
+    </article>
+  </div>
+</section>
+
+<section id="ship">
+  <div class="eyebrow">Ship</div>
+  <h2>Runs on the jury box, offline</h2>
+  <div class="grid">
+    <article class="card">
+      <div class="eyebrow">Budget</div>
+      <ul class="rules" style="margin-top:14px">
+        <li>2 CPU, 4 GB RAM, no network.</li>
+        <li>60 seconds and 100 steps per episode; going over ends the episode with an error code, never a crash.</li>
+        <li>One demo episode runs in well under a second.</li>
+      </ul>
+    </article>
+    <article class="card">
+      <div class="eyebrow">Runtime, 7 pinned packages</div>
+      <p style="margin-top:14px"><code>annotated-types==0.8.0</code> <code>networkx==3.6.1</code> <code>pydantic==2.14.2</code> <code>pydantic-core==2.50.2</code> <code>pyyaml==6.0.3</code> <code>typing-extensions==4.16.0</code> <code>typing-inspection==0.4.5</code></p>
+      <p class="muted">No torch, numpy, pandas or matplotlib in the image. Base <code>python:3.11-slim</code> pinned by digest, non-root user.</p>
+    </article>
+    <article class="card">
+      <div class="eyebrow">Tests and lint</div>
+      <div class="n" style="font: 400 40px/1.05 var(--serif); margin: 10px 0 6px">500 passed</div>
+      <p class="muted">380 test functions in 51 files (21 slow). The complete jury protocol runs with every socket blocked on each CI run. Lint: all checks passed, 0 findings.</p>
+    </article>
+  </div>
+  <article class="card" style="margin-top:24px">
+    <div class="eyebrow">Try it</div>
+    <div class="cmd" style="margin-top:14px">make demo                                   # this episode, in the terminal
+make test                                   # the fast suite
+make docker-build &amp;&amp; docker run --rm --network none --cpus 2 --memory 4g fintrace:0.1.0</div>
+  </article>
+</section>
+
+<footer>
+  <div class="eyebrow">Where the numbers come from</div>
+  <div class="table-wrap" style="margin-top:14px"><table>
+    <tr><th>Numbers</th><th>Committed source</th></tr>
+    <tr><td>episode id, sizes, steps, notes, findings, tp / fp / fn / precision / recall / f1 / return</td><td><code>python -m fintrace</code> (deterministic; <code>src/fintrace/__main__.py</code>)</td></tr>
+    <tr><td>oracle +0.975, rule-based +0.678, random and mark-everything -1.000</td><td><code>docs/results_dev.md</code></td></tr>
+    <tr><td>20 attackers, their means, threshold -0.3, reference -0.540</td><td><code>docs/results_attacks.json</code></td></tr>
+    <tr><td>oracle gaps and paired returns</td><td><code>docs/oracle_gap_results.json</code></td></tr>
+    <tr><td>episodes, seeds, skipped seeds, config hash</td><td><code>data/manifest.json</code>, <code>make data-verify</code></td></tr>
+    <tr><td>issues and decoys per episode, leak-scan surfaces, fuzzed actions, test inventory, image digest</td><td><code>docs/environment_card.md</code></td></tr>
+    <tr><td>behaviour-cloning accuracies, thresholds, timing</td><td><code>experiments/bc_proof/bc_results.json</code></td></tr>
+    <tr><td>OCEL events and objects</td><td><code>docs/sample_ocel_log.json</code></td></tr>
+    <tr><td>pinned packages</td><td><code>requirements.txt</code></td></tr>
+    <tr><td>reward constants, tolerance, page and finding limits, budgets</td><td><code>src/fintrace/constants.py</code>, <code>CLAUDE.md</code></td></tr>
+  </table></div>
+  <p style="margin-top:22px">FINTRACE, Genesis Hackathon 2026. This page is one static file with no scripts and no network requests.</p>
+</footer>
+
+</div>
+</body>
+</html>
