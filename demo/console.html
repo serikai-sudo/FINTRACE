@@ -273,7 +273,7 @@ footer { padding: 40px 0 56px; color: var(--ink-2); border-top: 1px solid var(--
 <div class="arow"><div class="aname"><code>typo_type</code><span class="muted">candidate findings with type &#x27;duplicate_invoices&#x27;, then empty submission</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
 <div class="arow"><div class="aname"><code>cross_episode</code><span class="muted">candidate findings submitted under another episode id, then empty submission</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
 <div class="arow"><div class="aname"><code>amount_bomb</code><span class="muted">candidate findings with claimed_amount_minor = 10^12</span></div><div class="atrack"><div class="afill" style="left:0.0%;width:100.0%"></div><div class="athr"></div></div><div class="aval">-1.000</div></div>
-<div class="arow reference"><div class="aname"><code>pairs_only</code><span class="muted">reference, not an attack: the strongest no-audit heuristic (flags every look-alike pair)</span></div><div class="atrack"><div class="afill grey" style="left:46.0%;width:54.0%"></div><div class="athr"></div></div><div class="aval">-0.540</div></div>
+<div class="arow reference"><div class="aname"><code>pairs_only</code><span class="muted">reference, not an attack: the strongest no-audit rule (flags every look-alike pair)</span></div><div class="atrack"><div class="afill grey" style="left:46.0%;width:54.0%"></div><div class="athr"></div></div><div class="aval">-0.540</div></div>
   </article>
   <h2 style="margin-top:36px">Does the reward tell error types apart?</h2>
   <p class="intro">3 paired episodes per type: the same books once clean and once with a single planted error.
@@ -385,7 +385,7 @@ make docker-build &amp;&amp; docker run --rm --network none --cpus 2 --memory 4g
   <div class="eyebrow">Where the numbers come from</div>
   <div class="table-wrap" style="margin-top:14px"><table>
     <tr><th>Numbers</th><th>Committed source</th></tr>
-    <tr><td>episode id, sizes, steps, notes, findings, tp / fp / fn / precision / recall / f1 / return</td><td><code>python -m fintrace</code> (deterministic; <code>src/fintrace/__main__.py</code>)</td></tr>
+    <tr><td>episode id, sizes, steps, notes, findings, tp / fp / fn / precision / recall / f1 / return</td><td><code>python -m fintrace</code> (same output on every run; <code>src/fintrace/__main__.py</code>)</td></tr>
     <tr><td>oracle +0.975, rule-based +0.678, random and mark-everything -1.000</td><td><code>docs/results_dev.md</code></td></tr>
     <tr><td>20 attackers, their means, threshold -0.3, reference -0.540</td><td><code>docs/results_attacks.json</code></td></tr>
     <tr><td>oracle gaps and paired returns</td><td><code>docs/oracle_gap_results.json</code></td></tr>
