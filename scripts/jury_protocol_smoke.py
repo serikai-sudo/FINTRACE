@@ -13,8 +13,10 @@ fields and ``PASS`` or ``FAIL`` (exit 1). Needs no network and nothing outside `
 ``judge_adapter.py``: without ``--team-config`` an embedded team config (four single injections)
 is used, and a seed that is infeasible for it is skipped for the next one.
 ``tests/integration/test_jury_protocol_offline.py`` runs ``run_protocol`` under a socket guard;
-``make docker-verify`` runs this file inside the image. No ``__file__`` use: the file may be
-executed from stdin.
+``make docker-verify`` runs this file inside the image. The repository root (where
+``judge_adapter.py`` lives) is put on ``sys.path`` so ``python scripts/jury_protocol_smoke.py``
+works from a plain shell; on stdin ``__file__`` is undefined and the current directory
+(``/app`` in the image, already on ``PYTHONPATH``) is used instead.
 """
 
 from __future__ import annotations
@@ -27,11 +29,18 @@ import time
 from pathlib import Path
 from typing import Any, Final
 
-import judge_adapter
+# judge_adapter.py lives at the repository root: put it on the path for `python scripts/...`
+# from a plain shell; from stdin (docker-verify) __file__ is undefined and the cwd is used
+_SCRIPT_FILE: str | None = globals().get("__file__")
+_REPO_ROOT: Path = Path(_SCRIPT_FILE).resolve().parent.parent if _SCRIPT_FILE else Path.cwd()
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-from fintrace.agents.rule_based import RuleBasedReconciliation
-from fintrace.constants import DEMO_TEAM_CONFIG, MAX_STEPS
-from fintrace.generator.injectors.base import InjectorError
+import judge_adapter  # noqa: E402
+
+from fintrace.agents.rule_based import RuleBasedReconciliation  # noqa: E402
+from fintrace.constants import DEMO_TEAM_CONFIG, MAX_STEPS  # noqa: E402
+from fintrace.generator.injectors.base import InjectorError  # noqa: E402
 
 SCORE_KEYS: Final[tuple[str, ...]] = ("tp", "fp", "fn", "precision", "recall", "f1", "return")
 MAX_SEED_TRIES: Final[int] = 10

@@ -445,8 +445,11 @@ def build_episode(seed: int, config: EpisodeConfig | None = None) -> PrivateEpis
     for issue in private.truth.issues:
         try:
             _load_injector(issue.type).independent_check(private.public, issue)
-        except ConsistencyError as exc:
-            raise InjectorError(f"issue {issue.issue_id} is masked by a later injection") from exc
+        except (ConsistencyError, InjectorError) as exc:
+            raise InjectorError(
+                f"issue {issue.issue_id} ({issue.type}) failed its independent re-check on the "
+                f"final books, i.e. a later injection masked it: {exc}"
+            ) from exc
     return _reassign_episode_id(private)
 
 

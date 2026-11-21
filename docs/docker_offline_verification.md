@@ -33,7 +33,7 @@ pipes into the container, so the in-container run and the CI test exercise one c
 |---|---|
 | Base image | `python:3.11-slim` pinned by digest `sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535` |
 | Build | two stages; stage 1 installs `requirements.txt` into `/opt/venv`, removes pip/setuptools and bundled test suites; stage 2 copies only the venv, `src/` and `judge_adapter.py` |
-| Runtime dependencies | `annotated-types, networkx, pydantic, pydantic-core, pyyaml, typing-extensions, typing-inspection` (matplotlib and its stack are a dev extra: charts are rendered by `scripts/`, which is not in the image) |
+| Runtime dependencies | `annotated-types, pydantic, pydantic-core, pyyaml, typing-extensions, typing-inspection` (matplotlib and its stack are a dev extra: charts are rendered by `scripts/`, which is not in the image) |
 | Build context | whitelist: `requirements.txt`, `src/`, `judge_adapter.py`; `data/` (truth files), `trajectories/`, `config/`, `docs/`, `.git` never enter the image |
 | User | non-root `fintrace`, uid 10001, `nologin` shell |
 | Interpreter | `PYTHONPATH=/app/src:/app`, `PYTHONDONTWRITEBYTECODE=1`, `python -m compileall` at build time so cold start pays no compile cost |

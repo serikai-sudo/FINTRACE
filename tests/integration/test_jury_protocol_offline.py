@@ -38,7 +38,11 @@ BLOCKED_FAMILIES = (-1, socket.AF_INET, socket.AF_INET6)  # -1 = CPython's defau
 RESOLVERS = ("create_connection", "getaddrinfo", "gethostbyname", "gethostbyname_ex", "getnameinfo")
 HEAVY_OR_NETWORK = (
     "torch", "matplotlib", "pandas", "numpy", "requests", "httpx", "urllib3", "pm4py",
-    "streamlit", "transformers",
+    "streamlit", "transformers", "networkx",
+)  # fmt: skip
+RUNTIME_PINS = (
+    "annotated-types", "pydantic", "pydantic-core", "pyyaml", "typing-extensions",
+    "typing-inspection",
 )  # fmt: skip
 
 
@@ -141,6 +145,7 @@ def test_runtime_requirements_lean() -> None:
         if line.strip() and not line.startswith("#")
     ]
     assert pins and all(re.fullmatch(r"[a-z0-9_.-]+", name) for name in pins)
+    assert sorted(pins) == sorted(RUNTIME_PINS), pins  # exactly the six packages the image needs
     assert not set(pins) & set(HEAVY_OR_NETWORK), sorted(set(pins) & set(HEAVY_OR_NETWORK))
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     runtime = [re.split(r"[<>=!~ \[]", dep)[0].lower() for dep in project["dependencies"]]

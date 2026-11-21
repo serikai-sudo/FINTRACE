@@ -41,7 +41,6 @@ src/fintrace/
   generator/       seeded episode generator; injectors/ = one module per error type
   environment/     step/reset loop, observation building, step & time budgets
   tools/           agent-facing tools; operate on PublicEpisode ONLY
-  graph/           NetworkX document/ledger graph
   exporters/       JSONL / OCEL exporters; episode_files.py = episode directory read/write
                    (the single serializer behind `make data` and the jury adapter)
   evaluator/       scoring against PrivateEpisode (truth + provenance)
@@ -51,7 +50,7 @@ src/fintrace/
   logging/         structured trajectory logging
   transforms/      observation / data transforms
 experiments/bc_proof/  behaviour-cloning proof (torch; NOT part of the package or image)
-tests/             contract/, reward/, repro/, robustness/, integration/, test_smoke.py
+tests/             contract/, reward/, repro/, robustness/, security/, integration/, test_smoke.py
 scripts/           CLI tooling: generate_schemas.py (`make schemas`)
 judge_adapter.py   jury connection protocol (generate_episode / make_env / score_episode);
                    the only Python file at the repository root, copied to /app in the image
