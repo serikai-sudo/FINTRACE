@@ -65,6 +65,7 @@ architecture; extend existing files first.
 | Command             | What it does                                                    |
 |---------------------|-----------------------------------------------------------------|
 | `make install`      | `pip install -r requirements.txt -e ".[dev]"` (pinned runtime + dev) |
+| `make check`        | one command for a reviewer: `make lint`, `make test`, `make data-verify`; prints one `check: PASS/FAIL` line, non-zero on any failure |
 | `make test`         | `pytest -m "not slow"` — the fast suite (< 40 s; config in `pyproject.toml`; warnings are errors) |
 | `make test-slow`    | `pytest -m slow` — seed sweeps, fuzz, full leak scan (≈ 2 min)  |
 | `make test-all`     | `pytest -m ""` — both suites                                    |

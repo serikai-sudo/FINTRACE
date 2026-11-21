@@ -21,9 +21,9 @@ from fintrace.exporters.episode_files import (
     write_episode,
 )
 from fintrace.generator.build import build_episode
-from fintrace.models import EpisodeState, JsonObject, Truth
+from fintrace.models import EpisodeState, JsonObject, PrivateEpisode, Truth
 from fintrace.reward.official import official_reward
-from fintrace.transforms.robustness import oracle_findings
+from fintrace.transforms.robustness import oracle_findings, remap_ids
 
 DEV_SEED = 10000
 FORBIDDEN = (
@@ -344,3 +344,50 @@ def test_score_matches_reward_block(episode_dir: Path, tmp_path: Path) -> None:
     scored = judge_adapter.score_episode(str(tmp_path / "one"), flood, 10)
     assert (scored["tp"], scored["fp"], scored["fn"]) == (1, 19, 0)
     assert math.isclose(scored["return"], -871 / 1050, abs_tol=1e-12)  # T12: mark-everything
+
+
+def _same_id_remapped_copy(
+    private: PrivateEpisode, seed: int
+) -> tuple[PrivateEpisode, dict[str, str]]:
+    """A copy with every id remapped but the ORIGINAL episode_id kept (the jury's paired copy)."""
+    remapped, mapping = remap_ids(private, seed)
+    episode_id = private.public.manifest.episode_id
+    manifest = remapped.public.manifest.model_copy(update={"episode_id": episode_id})
+    public = remapped.public.model_copy(update={"manifest": manifest})
+    truth = remapped.truth.model_copy(update={"episode_id": episode_id})
+    return remapped.model_copy(update={"public": public, "truth": truth}), mapping.id_map
+
+
+def _get(env: _JudgeEnv, table: str, record_id: str) -> dict[str, object]:
+    return env.step({"name": "get_record", "args": {"table": table, "id": record_id}})[0]
+
+
+def test_paired_copy_same_episode_id_served_by_new_env(tmp_path: Path, episode_dir: Path) -> None:
+    """Paired check as the jury runs it: the original episode first, then a NEW env object loads
+    a transformed copy that keeps the same episode_id but carries remapped ids. The copy's env
+    must serve the copy's records (the old ids are unknown to it) and the first env must keep
+    serving the original: no view may be shared between the two episode objects."""
+    original = read_episode(episode_dir)
+    copy, id_map = _same_id_remapped_copy(original, seed=7)
+    copy_dir = tmp_path / "copy"
+    write_episode(copy, copy_dir, DEV_SEED)
+    old_id = original.public.invoices[0].invoice_id
+    new_id = id_map[old_id]
+    assert new_id != old_id
+    assert copy.public.manifest.episode_id == original.public.manifest.episode_id
+    env_x, _ = _closed(episode_dir)
+    assert _get(env_x, "invoices", old_id)["result"]["invoice_id"] == old_id  # primes the cache
+    env_y, _ = _closed(copy_dir)  # second env object, same episode_id, different records
+    hit = _get(env_y, "invoices", new_id)
+    assert hit["error"] is None and hit["result"]["invoice_id"] == new_id
+    assert _error(_get(env_y, "invoices", old_id))["code"] == "NOT_FOUND"
+    evidence = copy.truth.issues[0].acceptable_evidence_sets[0]
+    doc_id = next(x for x in evidence if x.startswith("DOC"))
+    document = env_y.step({"name": "get_document", "args": {"doc_id": doc_id}})[0]
+    assert document["error"] is None and document["result"]["doc_id"] == doc_id
+    page = _records(_list(env_y, "invoices", None, 5)[0])
+    expected = sorted(copy.public.invoices, key=lambda i: (i.issued_at, i.invoice_id))[:5]
+    assert [r["invoice_id"] for r in page] == [i.invoice_id for i in expected]
+    # the first env still serves its own episode, untouched by the second one
+    assert _get(env_x, "invoices", old_id)["result"]["invoice_id"] == old_id
+    assert _error(_get(env_x, "invoices", new_id))["code"] == "NOT_FOUND"
