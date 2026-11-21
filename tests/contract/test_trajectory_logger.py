@@ -1,8 +1,8 @@
-"""TrajectoryLogger contract: canonical JSONL per step, thoughts kept, byte-stable, closed."""
+"""TrajectoryLogger contract: canonical JSONL per step, thoughts kept, closed (byte-stable rerun:
+tests/repro/test_determinism.py)."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from decimal import Decimal
@@ -12,7 +12,7 @@ import pytest
 
 from fintrace.agents.rule_based import RuleBasedReconciliation
 from fintrace.environment.env import FintraceEnv
-from fintrace.evaluator.runner import load_split_config, run_baseline
+from fintrace.evaluator.runner import run_baseline
 from fintrace.logging.trajectory import (
     ENTRY_FIELDS,
     TrajectoryLogger,
@@ -60,16 +60,6 @@ def test_logger_preserves_thought_field(tmp_path: Path) -> None:
     assert [e["action"]["thought"] for e in entries] == [a["thought"] for a in trace]
     assert all(len(e["action"]["thought"]) >= 10 for e in entries)
     assert [e["action"] for e in entries] == trace  # the action is recorded exactly as sent
-
-
-def test_logger_byte_stable_rerun(tmp_path: Path) -> None:
-    first, second = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
-    _record(first, 10001, load_split_config("dev"))
-    _record(second, 10001, load_split_config("dev"))
-    assert first.read_bytes() == second.read_bytes()
-    assert hashlib.sha256(first.read_bytes()).hexdigest() == hashlib.sha256(
-        second.read_bytes()
-    ).hexdigest()
 
 
 def test_logger_canonical_json(tmp_path: Path) -> None:

@@ -20,7 +20,10 @@ real audit tooling. FINTRACE is built around five pillars that map onto those ne
 
 - `src/fintrace/generator/` builds a clean double-entry history first (`build_clean_episode`),
   validated by `generator/validate.py` (balanced journals, invoice totals, payment allocations,
-  ledger↔document links, period bounds, Benford statistics). Only then do the injectors run.
+  ledger↔document links, period bounds). Only then do the injectors run. The first-digit
+  distribution of the amounts is checked against Benford's law by chi-squared in the test suite
+  (`tests/contract/test_generator.py::test_benford_passes_95_of_100_seeds`), not enforced by the
+  generator.
 - `generator/injectors/` holds one module per error type (`duplicate.py`, `payment.py`,
   `fx_error.py`, `period.py`) plus `interacting.py` for two-issue scenarios. Each injector returns
   the mutated episode, the `Issue` it created (type, canonical `affected_ids`,
@@ -78,10 +81,9 @@ Held by: `tests/security/` (isolation, full leak scan, trajectory, OCEL and adap
 - Trajectories record every action with the agent's own `thought`, so an investigation can be
   replayed and reviewed step by step without a clock or a seed in the file.
 
-Held by: `tests/contract/test_generator.py::test_deterministic_regeneration`,
-`tests/integration/test_data_integration.py`, `tests/contract/test_trajectory_logger.py`,
-`tests/integration/test_record_trajectories.py`, the determinism tests of the oracle-gap and OCEL
-modules.
+Held by: `tests/repro/test_determinism.py`, `tests/repro/test_data_integration.py`,
+`tests/repro/test_record_trajectories.py`, `tests/contract/test_trajectory_logger.py` (canonical
+lines), the determinism tests of the oracle-gap and OCEL modules.
 
 ## Pillar 4: Adversarial robustness
 
@@ -106,8 +108,8 @@ modules.
   every error type. The environment gives a gradient, not a pass/fail bit.
 
 Held by: `tests/reward/` (matcher, adversarial matcher, metrics, reward, adversarial reward),
-`tests/contract/test_attackers.py`, `tests/integration/test_run_attacks.py`,
-`tests/contract/test_robustness.py`, `tests/contract/test_oracle_gap.py`.
+`tests/robustness/test_attackers.py`, `tests/integration/test_run_attacks.py`,
+`tests/robustness/test_transforms.py`, `tests/contract/test_oracle_gap.py`.
 
 ## Pillar 5: Interoperability with audit tooling
 
@@ -122,8 +124,8 @@ Held by: `tests/reward/` (matcher, adversarial matcher, metrics, reward, adversa
   events), validated against `schemas/ocel.schema.json`, structurally checked and leak-scanned
   before it is written, so an auditor can open the trace in PM4Py or Celonis.
 - The Docker image ships `src/` and `judge_adapter.py` on a digest-pinned `python:3.11-slim`
-  base, runs as a non-root user and installs only `pydantic`, `pyyaml`, `networkx` and their
-  stubs. `tests/integration/test_jury_protocol_offline.py` runs the complete protocol with every
+  base, runs as a non-root user and installs only `pydantic`, `pyyaml` and their support
+  packages (six pins). `tests/integration/test_jury_protocol_offline.py` runs the complete protocol with every
   socket and name lookup blocked on every CI run; `make docker-verify` repeats it inside the
   container under `--network none --cpus 2 --memory 4g` wherever a daemon exists
   (`docker_offline_verification.md`).
@@ -140,7 +142,7 @@ Held by: `tests/contract/test_judge_adapter.py`, `tests/security/test_adapter_is
 | `truth.json` and `provenance.json` never reach the agent surface | leak scanner over observations, trajectories and exports; static error messages | `tests/security/test_isolation.py::test_no_truth_in_observations_via_100_random_steps`, `tests/security/test_leak_scan_full.py::test_leak_scan_20_seeds_100_steps_each` |
 | Evaluator isolation: `agents/*` never import `evaluator/*`, directly or transitively | AST + subprocess import firewall | `tests/contract/test_runner.py::test_oracle_not_accessible_from_agents`, `tests/contract/test_attack_isolation.py::test_no_evaluator_imports_in_attacks` |
 | Error contract: every environment error is exactly `{"error": {"code"}}` | `Error` model with `extra="forbid"`; `build_error_result` drops messages | `tests/contract/test_models.py::test_error_is_code_only`, `tests/contract/test_env_fuzz.py::test_fuzz_action_envelopes_never_crash` |
-| Determinism: same seed + config ⇒ byte-identical files and identical rewards | single seeded RNG, canonical serialisation, banned wall-clock APIs | `tests/contract/test_generator.py::test_deterministic_regeneration`, `tests/integration/test_data_integration.py::test_generate_data_timing` |
+| Determinism: same seed + config ⇒ byte-identical files and identical rewards | single seeded RNG, canonical serialisation, banned wall-clock APIs | `tests/repro/test_determinism.py::test_deterministic_regeneration`, `tests/repro/test_data_integration.py::test_generate_data_timing` |
 | Budgets: ≤ 100 steps and ≤ 60 s per episode end the episode with a code, not an exception | `EpisodeState` step counter; `time.monotonic` deadline kept off-state | `tests/contract/test_env.py::test_truncation_at_100_steps`, `tests/contract/test_judge_adapter.py::test_60s_timeout_C18` |
 | Versioning: `config/versions.json` and `schema_version` are the source of truth | `$id` of every schema derived from `SCHEMA_VERSION` | `tests/contract/test_schemas.py::test_schema_ids_follow_convention` |
 

@@ -35,6 +35,9 @@ jobs:
       - name: Fast tests
         run: make test
 
+      - name: Data verify (committed episodes re-hashed against checksums and config hash)
+        run: make data-verify
+
   slow-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -55,3 +58,13 @@ jobs:
 
       - name: Slow tests (seed sweeps)
         run: make test-slow
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: fast-tests
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build the image and run the jury protocol inside it offline
+        run: make docker-verify

@@ -1,4 +1,5 @@
-"""Contract tests for build_clean_episode: validity, determinism, structure, Benford, timing."""
+"""Contract tests for build_clean_episode: validity, structure, Benford, timing (determinism:
+tests/repro/test_determinism.py)."""
 
 from __future__ import annotations
 
@@ -10,7 +11,12 @@ from itertools import pairwise
 
 import pytest
 
-from fintrace.constants import BENFORD_CHI_SQUARED_CRITICAL, MAX_LEDGER_ROWS, MIN_LEDGER_ROWS
+from fintrace.constants import (
+    BENFORD_CHI_SQUARED_CRITICAL,
+    BENFORD_MIN_SAMPLE_SIZE,
+    MAX_LEDGER_ROWS,
+    MIN_LEDGER_ROWS,
+)
 from fintrace.generator.build import build_clean_episode
 from fintrace.generator.fx import build_fx_index, convert_minor, policy_date, rate_on
 from fintrace.generator.validate import check_benford, validate_clean_history
@@ -40,14 +46,6 @@ def test_build_clean_passes_validation_700_seeds() -> None:
     elapsed = time.monotonic() - started
     # ~25 s on the dev box (2 CPU); the bound is ~3x that so a slower CI runner stays green
     assert elapsed < 90.0, f"{SWEEP_SEEDS} seeds took {elapsed:.1f}s"
-
-
-def test_deterministic_regeneration(default_episode: PrivateEpisode) -> None:
-    first = build_clean_episode(seed=42, config=EpisodeConfig()).model_dump_json()
-    second = build_clean_episode(seed=42).model_dump_json()
-    assert first == second == default_episode.model_dump_json()
-    other_config = build_clean_episode(seed=42, config=EpisodeConfig(period_days=91))
-    assert other_config.model_dump_json() != first  # config is part of the determinism key
 
 
 def test_different_seeds_different_episodes() -> None:
@@ -177,12 +175,16 @@ def test_foreign_currency_handled(default_episode: PrivateEpisode) -> None:
 
 @pytest.mark.slow
 def test_benford_passes_95_of_100_seeds() -> None:
-    passing = 0
+    passing = counted = 0
     for seed in range(BENFORD_SEEDS):
         public = build_clean_episode(seed=seed).public
+        if len(public.ledger) < BENFORD_MIN_SAMPLE_SIZE:
+            continue  # below this sample size the first-digit statistic is not meaningful
+        counted += 1
         if check_benford(public.ledger, public.invoices) < BENFORD_CHI_SQUARED_CRITICAL:
             passing += 1
-    assert passing >= 95, f"only {passing}/{BENFORD_SEEDS} seeds pass the Benford chi-squared test"
+    assert counted == BENFORD_SEEDS  # every clean episode has at least MIN_LEDGER_ROWS rows
+    assert passing >= 95, f"only {passing}/{counted} seeds pass the Benford chi-squared test"
 
 
 def test_generation_time_under_5_seconds() -> None:

@@ -477,8 +477,8 @@ def render_markdown(m: Metrics) -> str:
     provenance = "\n".join(f"| {n} | {v} | `{s}` |" for n, v, s in provenance_rows(m))
     n_issue_types = len(m["issue_types"])
     repro_tests = (
-        "`tests/integration/test_data_integration.py::test_generate_data_timing`, "
-        "`tests/contract/test_generator.py::test_deterministic_regeneration`"
+        "`tests/repro/test_data_integration.py::test_generate_data_timing`, "
+        "`tests/repro/test_determinism.py::test_deterministic_regeneration`"
     )
     leak_tests = (
         "`tests/security/test_leak_scan_full.py::test_leak_scan_20_seeds_100_steps_each`, "
@@ -512,8 +512,9 @@ def render_markdown(m: Metrics) -> str:
         "## Data",
         "",
         "- Generator: seeded synthetic double-entry books (`random.Random(seed)` only), validated "
-        "for balance, totals, allocations, period bounds and Benford statistics before any error "
-        "is injected.",
+        "for balance, totals, allocations and period bounds before any error is injected; the "
+        "first-digit distribution is checked against Benford's law by chi-squared in the test "
+        "suite.",
         f"- Injected error types (count per committed dev episode): {x.issue_counts}; interacting "
         f"scenarios: {x.scenarios}; issues per dev episode: {x.issues_per_episode}.",
         f"- Decoys (legitimate look-alikes, per dev episode): {x.decoys}.",
@@ -561,8 +562,6 @@ def render_markdown(m: Metrics) -> str:
         f"- Synthetic data: {n_issue_types} error classes plus {x.n_scenarios} interacting "
         "scenarios; realistic rates and structure, but no document images, free text or human "
         "noise.",
-        "- The NetworkX graph layer (`src/fintrace/graph/`) is declared in the architecture and "
-        "not yet used; relationships in the OCEL export come from the public records directly.",
         "- No learned policy is shipped: the baselines are a rule-based auditor, a random "
         "investigator, a mark-everything attacker and a truth-reading oracle; the CPU behaviour-"
         "cloning proof (D4, `experiments/bc_proof/`) predicts the expert's actions and claims no "
@@ -639,8 +638,9 @@ def render_pdf(m: Metrics, out: Path) -> int:
     )
     heading("Data")
     para(
-        "Seeded synthetic double-entry books validated (balance, totals, allocations, period, "
-        f"Benford) before injection. Error types per dev episode: {x.issue_counts}; interacting "
+        "Seeded synthetic double-entry books validated (balance, totals, allocations, period) "
+        "before injection; first digits checked against Benford in the test suite. Error types "
+        f"per dev episode: {x.issue_counts}; interacting "
         f"scenarios {x.scenarios}; {x.issues_per_episode} issues per episode. Decoys: {x.decoys}. "
         f"Split: {x.split} episodes, config hash {x.config_hash}, infeasible seeds skipped "
         f"({x.skipped})."
@@ -675,8 +675,7 @@ def render_pdf(m: Metrics, out: Path) -> int:
     heading("Limitations")
     para(
         f"Synthetic data with {len(m['issue_types'])} error classes plus {x.n_scenarios} "
-        "interacting scenarios; the NetworkX graph layer is declared but unused; no learned "
-        "policy is shipped "
+        "interacting scenarios; no learned policy is shipped "
         "(the CPU behaviour-cloning proof predicts expert actions only, no rollout reward); the "
         "rule-based baseline spends its whole step "
         f"budget ({x.rule_based_mean} vs oracle {x.oracle_mean} on dev)."
