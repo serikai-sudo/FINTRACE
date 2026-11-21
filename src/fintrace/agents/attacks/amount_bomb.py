@@ -16,7 +16,7 @@ class AmountBombAttack(AttackerBase):
 
     name = "amount_bomb"
     strategy = "candidate findings with claimed_amount_minor = 10^12"
-    defence = "the tolerance is relative to the expected amount, never to the claim"
+    defence = "the claimed amount must equal the expected amount; nothing scales with the claim"
 
     def _attack(self, observation: Observation) -> JsonObject:
         findings: list[JsonObject] = [self._pair_finding(pair) for pair in self._invoice_pairs()]

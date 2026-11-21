@@ -91,14 +91,16 @@ lines), the determinism tests of the oracle-gap and OCEL modules.
 
 - `evaluator/matcher.py` matches findings to issues one-to-one (maximum matching, so flooding
   and duplication do not buy extra true positives), requires the right type and currency,
-  canonical ids, an amount within `max(1, floor(0.001 × expected))` and an evidence superset of
-  one acceptable set. `reward/official.py` is `clip(2·F1 − 1 − 0.002·steps, −1, 1)`: silence on
-  erroneous books and false accusations on clean books both score −1, and every inspection step
-  has a price.
+  canonical ids, an amount equal to the expected one (the published per-type tolerance
+  `AMOUNT_TOLERANCE_MINOR` is 0 minor units for every type) and evidence ids that all exist in the
+  public episode and include one acceptable set; among equal-size matchings the pairs are chosen
+  by sorted issue id and smallest finding index (`match_pairs`). `reward/official.py` is
+  `clip(2·F1 − 1 − 0.002·steps, −1, 1)`: silence on erroneous books and false accusations on
+  clean books both score −1, and every inspection step has a price.
 - `agents/attacks/` holds 20 reward-hack policies, each probing one defence (flooding, empty or
   neighbouring evidence, tolerance edges, currency swaps, zero or astronomical amounts, wrong or
   misspelt types, look-alike ids, foreign episode ids, budget burning). `make attacks` runs them
-  on the held-out dev split: all 20 are defeated (mean ≤ −0.3; best −0.782; 15 on the −1.000
+  on the held-out dev split: all 20 are defeated (mean ≤ −0.3; best −0.782; 16 on the −1.000
   floor), and the report is regenerated and byte-compared in CI.
 - `transforms/robustness.py` remaps ids, shuffles records and shifts time; rewards of the oracle
   and the rule-based baseline are invariant, so a policy cannot rely on the generator's labelling.
@@ -116,17 +118,14 @@ Held by: `tests/reward/` (matcher, adversarial matcher, metrics, reward, adversa
 Honest boundaries of the current reward, isolation and generator; none of them is hidden behind a
 scenario-specific test, and each names the code that defines it.
 
-- **Amount tolerance is not zero.** A claimed amount matches when
-  `|claimed − expected| ≤ max(1, floor(0.001 × expected))` minor units (`constants.py`
-  `DEFAULT_TOLERANCE_FRAC`, `MIN_TOLERANCE_MINOR`; `evaluator/matcher.py`). On a 10 000-unit issue a
-  claim of 10 010 still counts; a zero tolerance per error type cannot be configured today.
-- **Evidence ids are checked as a set, not for existence.** A finding matches when its `evidence_ids`
-  include one acceptable set; extra ids, existing or not, are ignored, so a finding that adds an
-  unknown id to a complete set is still a true positive.
-- **Strict structure voids the whole submission.** An unknown `type`, a currency that is not three
-  upper-case letters, an id outside `^[A-Za-z0-9_\-:.]+$` or any limit breach (30 findings, 10 evidence
-  ids, 1 000 characters) is a validation error of the submission: `score_episode` returns −1 with null
-  metrics instead of counting that one finding as a false positive among the others.
+- **The matcher follows the jury conventions, with one published knob.** Amounts must match
+  exactly: the per-type tolerance `AMOUNT_TOLERANCE_MINOR` in `constants.py` is 0 minor units for
+  every type and is the only place a documented rounding rule could ever raise it. Evidence ids
+  must exist in the public episode and cover one acceptable set. A finding whose values are wrong
+  (unknown type string, currency or id differing by case or whitespace, wrong amount, missing or
+  non-existent evidence) is one false positive; a wrong JSON value type, a missing field, an extra
+  field or a size limit (30 findings, 10 evidence ids, 20 affected ids, 1 000 characters, 64
+  characters per id) is a structural error that voids the submission with return −1.
 - **An invalid submit inside an episode does not end it.** The environment answers
   `INVALID_ACTION`, charges the step and keeps the episode open; only `score_episode` (the jury's
   closed call) turns a structurally invalid submission into −1.

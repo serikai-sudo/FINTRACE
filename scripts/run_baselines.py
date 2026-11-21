@@ -27,7 +27,7 @@ from typing import Any, Final
 
 from fintrace.agents.base import BASELINE_NAMES
 from fintrace.constants import DATA_DIR, ISSUE_TYPES, MAX_STEPS
-from fintrace.evaluator.matcher import match
+from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.evaluator.runner import (
     BASELINE_FACTORIES,
@@ -115,15 +115,17 @@ def score_episode(
     submission = Submission.model_validate(
         {"episode_id": result["episode_id"], "findings": _submitted_findings(actions, terminated)}
     )
+    public_ids = public_ids_of(private.public)
     per_type: dict[str, dict[str, int]] = {}
     tp = fp = fn = 0
     for issue_type in ISSUE_TYPES:  # a finding only ever matches an issue of its own type, so the
         findings = [f for f in submission.findings if f.type == issue_type]  # matching splits
         issues = [i for i in private.truth.issues if i.type == issue_type]  # exactly by type
-        t_tp, t_fp, t_fn = match(findings, issues)
+        t_tp, t_fp, t_fn = match(findings, issues, public_ids=public_ids)
         per_type[issue_type] = {"tp": t_tp, "fp": t_fp, "fn": t_fn, "total": len(issues)}
         tp, fp, fn = tp + t_tp, fp + t_fp, fn + t_fn
-    if (tp, fp, fn) != match(submission.findings, private.truth.issues):
+    fp += sum(1 for f in submission.findings if f.type not in ISSUE_TYPES)  # unknown type: FP
+    if (tp, fp, fn) != match(submission.findings, private.truth.issues, public_ids=public_ids):
         raise RuntimeError(f"seed {result['seed']}: per-type counts do not add up to the match")
     precision, recall, f1 = compute_metrics(tp, fp, fn)
     inspection_steps = int(result["steps"]) - 1 if terminated else MAX_STEPS

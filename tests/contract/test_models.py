@@ -267,15 +267,35 @@ def test_finding_explanation_capped() -> None:
         Finding.model_validate(_finding(explanation="x" * 1001))
 
 
-@pytest.mark.parametrize("currency", ["usd", "USDD", "US", "U$D", "", "USD\n"])
-def test_finding_wrong_currency_pattern(currency: str) -> None:
-    with pytest.raises(ValidationError, match="string_pattern_mismatch"):
-        Finding.model_validate(_finding(currency=currency))
+@pytest.mark.parametrize("currency", ["usd", "USDD", "US", "U$D", "", "USD\n", " KZT"])
+def test_finding_currency_any_string_is_structurally_valid(currency: str) -> None:
+    """Jury §5/§8: a currency that differs by case, space or spelling is a matcher miss (one FP),
+    not a structural error; only a non-string value is structural."""
+    assert Finding.model_validate(_finding(currency=currency)).currency == currency
+    with pytest.raises(ValidationError, match="string_type"):
+        Finding.model_validate(_finding(currency=840))
 
 
-def test_finding_wrong_type_enum() -> None:
-    with pytest.raises(ValidationError, match="literal_error"):
-        Finding.model_validate(_finding(type="duplicates"))
+def test_finding_type_any_string_is_structurally_valid() -> None:
+    """Jury §8: an unknown type string is unmatched (FP), never an episode failure."""
+    assert Finding.model_validate(_finding(type="duplicates")).type == "duplicates"
+    with pytest.raises(ValidationError, match="string_type"):
+        Finding.model_validate(_finding(type=5))
+    with pytest.raises(ValidationError, match="missing"):
+        Finding.model_validate({k: v for k, v in _finding().items() if k != "type"})
+
+
+def test_finding_ids_any_string_up_to_64_chars() -> None:
+    """Ids inside a finding are plain strings (an id with a space names nothing: FP); the 64-char
+    size limit and the list caps stay structural."""
+    raw = _finding(affected_ids=["INV 001", "иNV-002"], evidence_ids=["x" * 64])
+    odd = Finding.model_validate(raw)
+    assert odd.affected_ids == ["INV 001", "иNV-002"]
+    with pytest.raises(ValidationError, match="string_too_long"):
+        Finding.model_validate(_finding(evidence_ids=["x" * 65]))
+    with pytest.raises(ValidationError, match="string_type"):
+        Finding.model_validate(_finding(affected_ids=[1, 2]))
+    assert Finding.model_validate(_finding(claimed_amount_minor=-1)).claimed_amount_minor == -1
 
 
 def test_submission_cap_30() -> None:

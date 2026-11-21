@@ -560,7 +560,7 @@ def render_markdown(m: Metrics) -> str:
         "## Intended use",
         "",
         "- Training and evaluating audit agents (RL fine-tuning, behaviour cloning, prompted LLM "
-        "agents) on reconciliation errors with a fixed-tolerance, leak-free, reproducible reward.",
+        "agents) on reconciliation errors with an exact-amount, leak-free, reproducible reward.",
         f"- Benchmarking reward robustness: the {x.n_attackers} attack policies and the oracle-gap "
         "diagnostic are part of the environment and rerun with one command each.",
         "",
@@ -583,11 +583,11 @@ def render_markdown(m: Metrics) -> str:
         "- The rule-based baseline spends its whole step budget, so late allocation issues can be "
         f"missed by design (its mean on the {m['attacks']['split']} split is {x.rule_based_mean} "
         f"against the oracle's {x.oracle_mean}).",
-        "- Reward tolerance and validation: a claimed amount matches within "
-        "`max(1, floor(0.001 x expected))` minor units, not exactly; evidence ids are checked as a "
-        "superset of one acceptable set, not for existence; a structurally invalid finding voids "
-        "the whole submission (-1) instead of counting as one false positive. The reward resists "
-        "the shipped attackers; it is not a proof against every possible exploit.",
+        "- Reward conventions: amounts must match exactly (the published per-type tolerance "
+        "`AMOUNT_TOLERANCE_MINOR` is 0 minor units); evidence ids must exist in the public episode "
+        "and cover one acceptable set; a finding with a wrong value is one false positive, while a "
+        "wrong JSON type, a missing field or a size limit voids the submission (-1). The reward "
+        "resists the shipped attackers; it is not a proof against every possible exploit.",
         "- Isolation is in-process: the environment object holds the hidden truth in an "
         "evaluator-side store and the tools read the public episode only; the harness must run "
         "the policy in a separate process for a process boundary.",
@@ -689,8 +689,8 @@ def render_pdf(m: Metrics, out: Path) -> int:
     pdf.ln(1.5)
     heading("Intended use / out of scope")
     para(
-        "Intended: training and evaluating audit agents on reconciliation errors with a fixed-"
-        "tolerance, leak-free, reproducible reward; benchmarking reward robustness with the "
+        "Intended: training and evaluating audit agents on reconciliation errors with an exact-"
+        "amount, leak-free, reproducible reward; benchmarking reward robustness with the "
         "shipped attackers and the oracle-gap diagnostic. Out of scope: auditing real books "
         "(synthetic data, fixed taxonomy) and production deployment (the image is an offline "
         "evaluation artefact)."
@@ -701,10 +701,10 @@ def render_pdf(m: Metrics, out: Path) -> int:
         "interacting scenarios; no learned policy is shipped "
         "(the CPU behaviour-cloning proof predicts expert actions only, no rollout reward); the "
         "rule-based baseline spends its whole step "
-        f"budget ({x.rule_based_mean} vs oracle {x.oracle_mean} on dev); amounts match within "
-        "max(1, floor(0.001 x expected)) minor units, evidence ids are checked as a superset (not "
-        "for existence), a structurally invalid finding voids the submission; isolation is "
-        "in-process (the policy must run in a separate process)."
+        f"budget ({x.rule_based_mean} vs oracle {x.oracle_mean} on dev); amounts must match "
+        "exactly (published tolerance 0), evidence ids must exist and cover an acceptable set, a "
+        "wrong value is one false positive while a wrong JSON type or size limit voids the "
+        "submission; isolation is in-process (the policy must run in a separate process)."
     )
     heading("Reproducibility")
     para(

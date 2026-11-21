@@ -12,7 +12,7 @@ import pytest
 
 from fintrace.constants import MAX_FINDINGS
 from fintrace.environment.env import FintraceEnv
-from fintrace.evaluator.matcher import match
+from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.generator.injectors.base import inconsistent_ids
 from fintrace.generator.validate import validate_clean_history
@@ -151,7 +151,7 @@ def test_mark_everything_scores_negative() -> None:
                 )
             )
         assert len(findings) == MAX_FINDINGS
-        tp, fp, fn = match(findings, episode.truth.issues)
+        tp, fp, fn = match(findings, episode.truth.issues, public_ids=public_ids_of(episode.public))
         _, _, f1 = compute_metrics(tp, fp, fn)
         assert tp <= 2 and fp >= MAX_FINDINGS - 2  # at most the two payment_allocation issues
         assert official_reward(f1, 0) < 0, ep_dir.name

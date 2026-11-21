@@ -13,7 +13,7 @@ import pytest
 import fintrace.environment.env as env_module
 from fintrace.agents.rule_based import RuleBasedReconciliation
 from fintrace.environment.env import FintraceEnv
-from fintrace.evaluator.matcher import match
+from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.evaluator.runner import load_split_config, run_baseline
 from fintrace.generator.build import build_episode
@@ -67,7 +67,7 @@ def _rule_based(private: PrivateEpisode, monkeypatch: pytest.MonkeyPatch) -> tup
     submitted = trace[-1]["args"]["findings"]
     assert isinstance(submitted, list)
     findings = [Finding.model_validate(f) for f in submitted]
-    tp, fp, fn = match(findings, private.truth.issues)
+    tp, fp, fn = match(findings, private.truth.issues, public_ids=public_ids_of(private.public))
     return compute_metrics(tp, fp, fn)[2], canonical_findings(submitted)
 
 

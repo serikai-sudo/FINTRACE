@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fintrace.constants import MAX_FINDINGS
 from fintrace.environment.env import FintraceEnv
-from fintrace.evaluator.matcher import match
+from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.generator.injectors.base import legitimate_pattern_ids
 from fintrace.models import (
@@ -99,7 +99,7 @@ def test_mark_everything_on_decoy_episode_loses() -> None:
         )
     assert len(shotgun) == MAX_FINDINGS
     findings = [Finding.model_validate(f) for f in shotgun]
-    tp, fp, fn = match(findings, issues)
+    tp, fp, fn = match(findings, issues, public_ids=public_ids_of(env.episode))
     _, _, f1 = compute_metrics(tp, fp, fn)
     assert tp <= 1 and fp >= MAX_FINDINGS - 1 and f1 < 0.1  # at most the one real allocation issue
     observation, reward, terminated, _, _ = _submit(env, shotgun)

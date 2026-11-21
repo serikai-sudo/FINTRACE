@@ -23,10 +23,10 @@ Version `0.1.0`, card date 2026-11-20 (fixed build date; every number below is r
 |---|---|---|
 | Determinism | byte-identical regeneration of all 20 committed episodes and of every report | `tests/repro/test_data_integration.py::test_generate_data_timing`, `tests/repro/test_determinism.py::test_deterministic_regeneration` |
 | Data leakage | enforced by tests scanning 20 episodes x 100 surfaces (2000) and 10000 fuzzed actions; any hit fails the suite | `tests/security/test_leak_scan_full.py::test_leak_scan_20_seeds_100_steps_each`, `tests/contract/test_env_fuzz.py::test_fuzz_10000_random_actions_no_crash_no_leak` |
-| Adversarial robustness | 20/20 attackers defeated on 10 dev episodes (threshold -0.3); worst mean -0.782 (undersubmit); 15/20 on the -1.000 floor; reference pairs_only -0.540 | `docs/results_attacks.json`, `docs/reward_robustness_report.md` |
+| Adversarial robustness | 20/20 attackers defeated on 10 dev episodes (threshold -0.3); worst mean -0.782 (undersubmit); 16/20 on the -1.000 floor; reference pairs_only -0.540 | `docs/results_attacks.json`, `docs/reward_robustness_report.md` |
 | Differential signal | rule_based oracle gap duplicate_invoice: 0.19, payment_allocation: 0.79, fx_error: 0.19, period_misclassification: 0.20; spread 0.60 (payment_allocation vs duplicate_invoice); attackers in [1.33, 2.00] on every error type; 24 policies x 5 types x 3 paired episodes | `docs/oracle_gap_results.json`, `docs/oracle_gap_report.md` |
 | Baselines (dev split) | oracle +0.975, rule_based +0.678, mark_everything -1.000, random -1.000 (mean reward) | `docs/results_dev.md` |
-| Test coverage | 382 test functions in 52 files (21 slow); parametrisation expands the collected count (`make test` / `make test-slow`) | `tests/` |
+| Test coverage | 392 test functions in 53 files (21 slow); parametrisation expands the collected count (`make test` / `make test-slow`) | `tests/` |
 
 Baseline detail (mean reward, std, min, max, mean steps):
 
@@ -39,7 +39,7 @@ Baseline detail (mean reward, std, min, max, mean steps):
 
 ## Intended use
 
-- Training and evaluating audit agents (RL fine-tuning, behaviour cloning, prompted LLM agents) on reconciliation errors with a fixed-tolerance, leak-free, reproducible reward.
+- Training and evaluating audit agents (RL fine-tuning, behaviour cloning, prompted LLM agents) on reconciliation errors with an exact-amount, leak-free, reproducible reward.
 - Benchmarking reward robustness: the 20 attack policies and the oracle-gap diagnostic are part of the environment and rerun with one command each.
 
 ## Out of scope
@@ -52,7 +52,7 @@ Baseline detail (mean reward, std, min, max, mean steps):
 - Synthetic data: 4 error classes plus 2 interacting scenarios; realistic rates and structure, but no document images, free text or human noise.
 - No learned policy is shipped: the baselines are a rule-based auditor, a random investigator, a mark-everything attacker and a truth-reading oracle; the CPU behaviour-cloning proof (D4, `experiments/bc_proof/`) predicts the expert's actions and claims no rollout reward.
 - The rule-based baseline spends its whole step budget, so late allocation issues can be missed by design (its mean on the dev split is +0.678 against the oracle's +0.975).
-- Reward tolerance and validation: a claimed amount matches within `max(1, floor(0.001 x expected))` minor units, not exactly; evidence ids are checked as a superset of one acceptable set, not for existence; a structurally invalid finding voids the whole submission (-1) instead of counting as one false positive. The reward resists the shipped attackers; it is not a proof against every possible exploit.
+- Reward conventions: amounts must match exactly (the published per-type tolerance `AMOUNT_TOLERANCE_MINOR` is 0 minor units); evidence ids must exist in the public episode and cover one acceptable set; a finding with a wrong value is one false positive, while a wrong JSON type, a missing field or a size limit voids the submission (-1). The reward resists the shipped attackers; it is not a proof against every possible exploit.
 - Isolation is in-process: the environment object holds the hidden truth in an evaluator-side store and the tools read the public episode only; the harness must run the policy in a separate process for a process boundary.
 
 ## Reproducibility
@@ -67,7 +67,7 @@ Baseline detail (mean reward, std, min, max, mean steps):
 |---|---|---|
 | attackers defeated | 20/20 | `docs/results_attacks.json: attackers[].defeated` |
 | worst attacker mean reward | -0.782 (undersubmit) | `docs/results_attacks.json: max(attackers[].stats.mean_reward)` |
-| attackers on the -1.000 floor | 15/20 | `docs/results_attacks.json: attackers[].stats.max_reward <= -1` |
+| attackers on the -1.000 floor | 16/20 | `docs/results_attacks.json: attackers[].stats.max_reward <= -1` |
 | reference heuristic mean reward | -0.540 (pairs_only) | `docs/results_attacks.json: reference.stats.mean_reward` |
 | defeat threshold | -0.3 | `docs/results_attacks.json: threshold` |
 | rule_based oracle-gap spread | 0.60 (payment_allocation 0.79 vs duplicate_invoice 0.19) | `docs/oracle_gap_results.json: gap.rule_based[type] over the error types` |
@@ -83,7 +83,7 @@ Baseline detail (mean reward, std, min, max, mean steps):
 | config hash | aa6f0ac73b16 | `data/manifest.json: config_hash` |
 | leak-scan surfaces | 20 episodes x 100 = 2000 | `tests/security/test_leak_scan_full.py: EPISODES_REQUIRED, STEPS_PER_EPISODE (+ reset)` |
 | fuzzed actions | 10000 | `tests/contract/test_env_fuzz.py: FUZZ_ITERATIONS` |
-| test inventory | 382 test functions in 52 files (21 slow) | `tests/**/test_*.py (AST)` |
+| test inventory | 392 test functions in 53 files (21 slow) | `tests/**/test_*.py (AST)` |
 | image base digest | sha256:07d4824036af339f... | `Dockerfile: ARG PYTHON_BASE` |
 | jury compute budget | 2 CPU / 4 GB RAM, no network | `CONTRIBUTING.md section 1 (declared constants JURY_CPUS, JURY_MEMORY_GB)` |
 | step / time budgets | 100 actions, 60 s | `fintrace.constants: MAX_STEPS, TIME_BUDGET_SECONDS` |

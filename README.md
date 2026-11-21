@@ -11,7 +11,7 @@ checksums; prints one `check: PASS` line, non-zero on any failure; needs `make i
 ```bash
 make install   # pinned runtime deps + package (editable) + dev tools
 make check     # lint + fast tests + data-verify in one command, one PASS/FAIL line
-make test      # fast tests (pytest -m "not slow"), 481 tests
+make test      # fast tests (pytest -m "not slow"), 500 tests
 make test-slow # seed sweeps and other slow tests (pytest -m slow), 21 tests
 make test-all  # everything
 make lint      # ruff over src/ tests/ scripts/ judge_adapter.py (zero findings)
@@ -43,7 +43,7 @@ target or a committed document: [docs/compliance_matrix.md](docs/compliance_matr
 | Data / ground truth (25) | consistency checks `tests/contract/test_validate.py`; per-type injector suites `tests/contract/test_injector_duplicate.py`, `test_injector_payment.py`, `test_injector_fx_error.py`, `test_injector_period.py` (each with `test_independent_check_passes_on_injected` and a 200-seed sweep); interacting scenarios `tests/contract/test_interacting_scenarios.py`; decoys `tests/contract/test_decoys.py::test_similar_invoices_not_caught_as_duplicate`; the committed dataset `tests/repro/test_data_integration.py::test_all_generated_episodes_validate` and `make data-verify`; Benford and 700-seed clean sweeps in `tests/contract/test_generator.py` (slow) |
 | Reward reliability (25) | matcher `tests/reward/test_matcher.py` and `tests/reward/test_matcher_adversarial.py` (one-to-one maximum matching, tolerance edges, evidence supersets); formula and clipping `tests/reward/test_official_reward.py`, `tests/reward/test_reward_adversarial.py`; 20 attackers `tests/robustness/test_attackers.py::test_attacker_scores_negative_on_dev` and `tests/integration/test_run_attacks.py::test_run_attacks_full_dev_split` (slow) → [reward robustness report](docs/reward_robustness_report.md); per-type floor `tests/contract/test_oracle_gap.py::test_attackers_uniform_floor`; transform invariance `tests/robustness/test_transforms.py` |
 | Reproducibility / generalization (15) | `tests/repro/test_determinism.py::test_deterministic_regeneration`; byte-identical episode files `tests/contract/test_judge_adapter.py::test_generate_episode_writes_all_files`; disjoint train/dev seeds `tests/contract/test_generate_data.py::test_train_dev_disjoint_seeds`; full dataset regeneration `tests/repro/test_data_integration.py::test_generate_data_timing` (slow); trajectory rerun identity `tests/repro/test_record_trajectories.py::test_record_trajectories_dev_with_rerun_check` (slow); held-out invariance `tests/robustness/test_transforms.py::test_remap_ids_rule_based_f1_matches`, `::test_shift_time_rule_based_f1_matches`; held-out dev results [docs/results_dev.md](docs/results_dev.md) and the [oracle-gap report](docs/oracle_gap_report.md) |
-| Engineering (10) | CI `.github/workflows/ci.yml` (lint + fast suite + `make data-verify`, then the slow suite, and a `docker` job that builds the image and runs the jury protocol inside it with `--network none`); `make lint` (ruff with mandatory annotations, no wall clock, no global RNG, no `print` in `src/`); offline guarantee `tests/integration/test_jury_protocol_offline.py::test_jury_protocol_runs_offline`, lean runtime `::test_runtime_requirements_lean`; `Dockerfile` (digest-pinned base, non-root, `src/` + `judge_adapter.py` only), `make docker-verify`, [docs/docker_offline_verification.md](docs/docker_offline_verification.md); 502 tests, 481 fast / 21 slow |
+| Engineering (10) | CI `.github/workflows/ci.yml` (lint + fast suite + `make data-verify`, then the slow suite, and a `docker` job that builds the image and runs the jury protocol inside it with `--network none`); `make lint` (ruff with mandatory annotations, no wall clock, no global RNG, no `print` in `src/`); offline guarantee `tests/integration/test_jury_protocol_offline.py::test_jury_protocol_runs_offline`, lean runtime `::test_runtime_requirements_lean`; `Dockerfile` (digest-pinned base, non-root, `src/` + `judge_adapter.py` only), `make docker-verify`, [docs/docker_offline_verification.md](docs/docker_offline_verification.md); 521 tests, 500 fast / 21 slow |
 
 ## Jury adapter
 
@@ -171,7 +171,7 @@ leak scanner fails the run on any such token or key.
 | P1 Ground-truth integrity | seeded generator, one injector per error type, independent re-derivation of every issue, provenance log |
 | P2 Isolation and leak-proof scoring | `PublicEpisode` / `PrivateEpisode` split, evaluator-side `TruthStore`, import firewall, leak scanner over every surface |
 | P3 Reproducibility and auditability | one `random.Random(seed)`, canonical serialisation, checksummed dataset, replayable trajectories |
-| P4 Adversarial robustness | one-to-one matcher with a fixed amount tolerance and superset evidence rules, 20 attackers, transform invariance, oracle gap |
+| P4 Adversarial robustness | one-to-one matcher with exact amounts (published tolerance 0 per type), existing-evidence superset rules and a deterministic tie-break, 20 attackers, transform invariance, oracle gap |
 | P5 Interoperability with audit tooling | jury adapter, OCEL 2.0 export, offline digest-pinned Docker image |
 
 The engineering narrative behind each pillar: [docs/design_note.md](docs/design_note.md).
@@ -190,7 +190,7 @@ scores submissions in an isolated evaluator, so that every reward is determinist
   rule_based +0.678, random −1.000, mark_everything −1.000 (10 episodes, config hash `aa6f0ac73b16`).
 - D1 reward robustness ([report](docs/reward_robustness_report.md),
   [chart](docs/figures/robustness_chart.png), [data](docs/results_attacks.json)): 20 of 20 attackers
-  defeated, mean rewards from −1.000 to −0.782, 15 of 20 on the −1.000 floor; the strongest no-audit
+  defeated, mean rewards from −1.000 to −0.782, 16 of 20 on the −1.000 floor; the strongest no-audit
   heuristic, run as a reference, reaches −0.540.
 - D3 oracle gap ([report](docs/oracle_gap_report.md), [heatmap](docs/figures/oracle_gap_matrix.png),
   [data](docs/oracle_gap_results.json)): rule_based gap 0.19 / 0.79 / 0.19 / 0.20 across

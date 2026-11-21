@@ -25,7 +25,7 @@ from pydantic import ValidationError
 from fintrace.constants import MAX_STEPS
 from fintrace.environment.env import FintraceEnv
 from fintrace.environment.observations import ResetObservation
-from fintrace.evaluator.matcher import match
+from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
 from fintrace.exporters.episode_files import read_episode, write_episode
 from fintrace.generator.build import build_episode
@@ -86,7 +86,9 @@ def score_episode(
             raise ValueError("inspection_steps must be non-negative")
     except (ValidationError, TypeError, ValueError):
         return {**dict.fromkeys(SCORE_KEYS), "return": -1.0}
-    tp, fp, fn = match(submission.findings, private.truth.issues)
+    tp, fp, fn = match(
+        submission.findings, private.truth.issues, public_ids=public_ids_of(private.public)
+    )
     precision, recall, f1 = compute_metrics(tp, fp, fn)
     return {
         "tp": tp,

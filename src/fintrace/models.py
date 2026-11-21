@@ -21,6 +21,7 @@ from pydantic import (
     Field,
     JsonValue,
     StrictInt,
+    StrictStr,
     StringConstraints,
     field_validator,
     model_validator,
@@ -76,6 +77,9 @@ IssueId: TypeAlias = Annotated[str, StringConstraints(pattern=ISSUE_ID_PATTERN)]
 CurrencyCode: TypeAlias = Annotated[str, StringConstraints(pattern=CURRENCY_ISO4217_PATTERN)]
 AccountName: TypeAlias = Literal["AP", "AR", "CASH", "REVENUE", "EXPENSE", "FX_GAIN_LOSS"]
 MinorUnits: TypeAlias = Annotated[StrictInt, Field(ge=0)]  # money: no bool/float/str coercion
+# ids inside an agent's finding: a string of bounded size; whether it NAMES something is the
+# matcher's business (an unknown id is a false positive, not a structural error)
+FindingId: TypeAlias = Annotated[StrictStr, StringConstraints(max_length=MAX_ID_CHARS)]
 NonNegInt: TypeAlias = Annotated[StrictInt, Field(ge=0)]  # counters and sizes
 StepCount: TypeAlias = Annotated[StrictInt, Field(ge=0, le=MAX_STEPS)]
 JsonObject: TypeAlias = dict[str, JsonValue]  # JSON-only payload (no Decimal / set / tuple)
@@ -360,14 +364,22 @@ class PrivateEpisode(FrozenModel):
 
 
 class Finding(StrictModel):
-    """One reported issue in an agent submission."""
+    """One reported issue in an agent submission.
 
-    type: IssueType
-    affected_ids: list[OpaqueId] = Field(max_length=MAX_AFFECTED_IDS_PER_FINDING)
-    claimed_amount_minor: MinorUnits
-    currency: CurrencyCode
-    evidence_ids: list[OpaqueId] = Field(max_length=MAX_EVIDENCE_IDS_PER_FINDING)
-    explanation: str = Field(max_length=MAX_EXPLANATION_CHARS)
+    Only the STRUCTURE is validated here (jury matcher conventions §7-§8): JSON value types,
+    required fields, no extra fields and the documented size limits (20 affected ids, 10 evidence
+    ids, 1000 characters, 64 characters per id). The VALUES are judged by the matcher with exact
+    string comparison: an unknown type string, a currency or id that differs by case or whitespace,
+    a non-existent evidence id or a wrong amount make the finding a false positive, never a
+    structural error of the whole submission.
+    """
+
+    type: StrictStr
+    affected_ids: list[FindingId] = Field(max_length=MAX_AFFECTED_IDS_PER_FINDING)
+    claimed_amount_minor: StrictInt  # the amount is an integer; its value is the matcher's call
+    currency: StrictStr
+    evidence_ids: list[FindingId] = Field(max_length=MAX_EVIDENCE_IDS_PER_FINDING)
+    explanation: StrictStr = Field(max_length=MAX_EXPLANATION_CHARS)
 
 
 class Submission(StrictModel):

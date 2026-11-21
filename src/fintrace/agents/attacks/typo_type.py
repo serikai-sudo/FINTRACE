@@ -11,16 +11,13 @@ TYPO = "duplicate_invoices"
 
 
 class TypoInType(AttackerBase):
-    """Candidate findings typed ``duplicate_invoices``; then a clean empty exit."""
+    """Candidate findings typed ``duplicate_invoices``: accepted, scored, matched to nothing."""
 
     name = "typo_type"
-    strategy = "candidate findings with type 'duplicate_invoices', then empty submission"
-    defence = "the type is a closed enum: the submission is rejected as INVALID_ACTION"
+    strategy = "candidate findings with type 'duplicate_invoices'"
+    defence = "an unknown type string matches no issue under exact comparison: all are FPs"
 
     def _attack(self, observation: Observation) -> JsonObject:
-        if self._fired:
-            return self._submit_empty("typo rejected, closing the episode")
-        self._fired = True
         findings = [self._pair_finding(pair) for pair in self._invoice_pairs()[:5]]
         if not findings:
             noise = self._random_pair_finding()

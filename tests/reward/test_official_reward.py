@@ -75,7 +75,7 @@ def test_truncation_empty_findings_full_budget() -> None:
         )
         for k in range(1, 6)
     )
-    tp, fp, fn = match([], issues)
+    tp, fp, fn = match([], issues, public_ids=frozenset())
     assert (tp, fp, fn) == (0, 0, 5)
     _, _, f1 = compute_metrics(tp, fp, fn)
     assert f1 == 0.0

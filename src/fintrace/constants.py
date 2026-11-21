@@ -23,10 +23,6 @@ INJECTOR_MAX_RETRY_ATTEMPTS: Final[int] = 10  # inject retries before build_epis
 INJECTOR_DUPLICATE_DATE_SHIFT_MAX_DAYS: Final[int] = 10  # duplicate issued 0..10 days later
 TIME_BUDGET_SECONDS: Final[float] = 60.0  # wall-clock safety timeout per episode (jury C18)
 
-# ---------------------------------------------------------------- 3. Tolerance defaults
-DEFAULT_TOLERANCE_FRAC: Final[Decimal] = Decimal("0.001")  # 0.1 % relative tolerance on amounts
-MIN_TOLERANCE_MINOR: Final[int] = 1  # absolute floor of the tolerance, in minor units
-
 # ---------------------------------------------------------------- 4. Benford (blueprint 4.3)
 BENFORD_CHI_SQUARED_CRITICAL: Final[Decimal] = Decimal("15.507")  # p = 0.05, 8 degrees of freedom
 BENFORD_MIN_SAMPLE_SIZE: Final[int] = 100  # below this the Benford signal is not reported
@@ -58,6 +54,12 @@ ISSUE_TYPES: Final[tuple[IssueType, ...]] = (
     "fx_error",
     "period_misclassification",
 )
+
+# Published amount tolerance per issue type, in minor units (jury matcher conventions, "Допуск
+# суммы"): a finding matches when |claimed - expected| <= tau. The jury default is an exact match
+# (tau = 0) and that is what every type uses; only a documented rounding rule may raise one entry,
+# never the agent's answer, the seed or a look at the results.
+AMOUNT_TOLERANCE_MINOR: Final[dict[str, int]] = {issue_type: 0 for issue_type in ISSUE_TYPES}
 
 # ---------------------------------------------------------------- 7. Error codes
 # The only error payload the environment ever emits is {"error": {"code": <ErrorCode>}}.
@@ -161,6 +163,7 @@ SCHEMAS_DIR: Final[Path] = Path("schemas")
 TRAJECTORIES_DIR: Final[Path] = Path("trajectories")
 
 __all__ = [
+    "AMOUNT_TOLERANCE_MINOR",
     "BENFORD_CHI_SQUARED_CRITICAL",
     "BENFORD_HI_EXPONENT",
     "BENFORD_LO_EXPONENT",
@@ -170,7 +173,6 @@ __all__ = [
     "CURRENCY_ISO4217_PATTERN",
     "DATA_DIR",
     "DEFAULT_ROUNDING_MODE",
-    "DEFAULT_TOLERANCE_FRAC",
     "DEMO_SEED",
     "DEMO_TEAM_CONFIG",
     "ENV_VERSION",
@@ -191,7 +193,6 @@ __all__ = [
     "MAX_STEPS",
     "MINOR_UNIT_DIGITS_DEFAULT",
     "MIN_LEDGER_ROWS",
-    "MIN_TOLERANCE_MINOR",
     "OCEL_OBJECT_TIME",
     "OCEL_OBJECT_TYPES",
     "OCEL_STEP_SECONDS",
