@@ -25,6 +25,9 @@ make bc-proof  # D4: CPU behaviour-cloning proof in its own venv (torch stays ou
 make demo      # python -m fintrace: one in-memory episode, the rule-based auditor's notes, findings, official score
 ```
 
+Open `demo/console.html` in a browser to see the platform on one page (static, offline, no scripts;
+every number on it comes from a committed artefact).
+
 Contributor and agent rules: [CLAUDE.md](CLAUDE.md). Every claim below maps to a test, a `make`
 target or a committed document: [docs/compliance_matrix.md](docs/compliance_matrix.md).
 
