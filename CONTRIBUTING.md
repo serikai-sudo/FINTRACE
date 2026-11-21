@@ -1,6 +1,6 @@
-# CLAUDE.md — FINTRACE
+# CONTRIBUTING.md — FINTRACE
 
-Instructions for every human and AI agent working in this repository. Read fully before any change.
+Instructions for everyone working in this repository. Read fully before any change.
 If a rule here conflicts with a convenience, the rule wins.
 
 ## 1. Project context

@@ -3,7 +3,7 @@
 An engineer's tour of the mechanisms behind the claims. Every mechanism is named by module and
 by the test that holds it in place; the test node ids are listed in
 [`compliance_matrix.md`](compliance_matrix.md). The rules the code follows are in
-[`CLAUDE.md`](../CLAUDE.md); the invariants quoted below are its §6.
+[`CONTRIBUTING.md`](../CONTRIBUTING.md); the invariants quoted below are its §6.
 
 ## The problem in one paragraph
 
@@ -134,7 +134,7 @@ Held by: `tests/contract/test_judge_adapter.py`, `tests/security/test_adapter_is
 `tests/contract/test_ocel.py`, `tests/security/test_ocel_leak.py`,
 `tests/integration/test_jury_protocol_offline.py`.
 
-## Architectural invariants (CLAUDE.md §6)
+## Architectural invariants (CONTRIBUTING.md §6)
 
 | Invariant | Mechanism | Held by |
 |---|---|---|

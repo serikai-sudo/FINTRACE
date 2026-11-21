@@ -28,7 +28,7 @@ make demo      # python -m fintrace: one in-memory episode, the rule-based audit
 Open `demo/console.html` in a browser to see the platform on one page (static, offline, no scripts;
 every number on it comes from a committed artefact).
 
-Contributor and agent rules: [CLAUDE.md](CLAUDE.md). Every claim below maps to a test, a `make`
+Contributor and agent rules: [CONTRIBUTING.md](CONTRIBUTING.md). Every claim below maps to a test, a `make`
 target or a committed document: [docs/compliance_matrix.md](docs/compliance_matrix.md).
 
 ## Judging criteria → evidence

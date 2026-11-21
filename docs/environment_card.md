@@ -83,5 +83,5 @@ Baseline detail (mean reward, std, min, max, mean steps):
 | fuzzed actions | 10000 | `tests/contract/test_env_fuzz.py: FUZZ_ITERATIONS` |
 | test inventory | 380 test functions in 52 files (21 slow) | `tests/**/test_*.py (AST)` |
 | image base digest | sha256:07d4824036af339f... | `Dockerfile: ARG PYTHON_BASE` |
-| jury compute budget | 2 CPU / 4 GB RAM, no network | `CLAUDE.md section 1 (declared constants JURY_CPUS, JURY_MEMORY_GB)` |
+| jury compute budget | 2 CPU / 4 GB RAM, no network | `CONTRIBUTING.md section 1 (declared constants JURY_CPUS, JURY_MEMORY_GB)` |
 | step / time budgets | 100 actions, 60 s | `fintrace.constants: MAX_STEPS, TIME_BUDGET_SECONDS` |
