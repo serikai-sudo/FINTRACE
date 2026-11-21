@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
 
-from fintrace.constants import ENV_VERSION, EPISODE_ID_PATTERN, MAX_STEPS
+from fintrace.constants import ENV_VERSION, EPISODE_ID_PATTERN, MAX_FINDINGS, MAX_STEPS
 from fintrace.environment.env import FintraceEnv
 from fintrace.generator.build import build_episode
 from fintrace.models import EpisodeConfig, JsonObject, PrivateEpisode, ToolResult
@@ -297,3 +298,97 @@ def test_two_envs_same_episode_id_keep_their_own_views() -> None:
     assert _get(env_x, "ledger", old_id).ok  # the first env is unaffected by the second
     stale = _get(env_x, "ledger", new_id)
     assert stale.error is not None and stale.error.code == "NOT_FOUND"
+
+
+def _submit_findings(env: FintraceEnv, findings: list[JsonObject]) -> tuple:
+    action = {
+        "tool": "submit",
+        "args": {"episode_id": env.episode.manifest.episode_id, "findings": findings},
+    }
+    return env.step(action)
+
+
+def _finding(**over: object) -> JsonObject:
+    data: JsonObject = {
+        "type": "duplicate_invoice",
+        "affected_ids": ["INV-0001", "INV-0002"],
+        "claimed_amount_minor": 1000,
+        "currency": "USD",
+        "evidence_ids": ["DOC-0001", "DOC-0002"],
+        "explanation": "probe",
+    }
+    data.update(over)
+    return data
+
+
+@pytest.mark.parametrize(
+    ("case", "findings"),
+    [
+        ("31 findings", [_finding()] * (MAX_FINDINGS + 1)),
+        ("11 evidence ids", [_finding(evidence_ids=[f"DOC-{i:04d}" for i in range(11)])]),
+        ("1001 characters", [_finding(explanation="a" * 1001)]),
+    ],
+)
+def test_structurally_invalid_submit_terminates_with_minus_one(
+    case: str, findings: list[JsonObject]
+) -> None:
+    """Jury Block 3, tests 18-20: a submission past a structural limit ends the episode at -1.
+
+    The agent sees a code-only error, the step is charged, nothing is recorded as submitted, and
+    the evaluator keeps the reason on its own side.
+    """
+    env = _env()  # clean books: an empty submission would score +1, a refused one must not
+    observation, reward, terminated, truncated, info = _submit_findings(env, findings)
+    assert observation.ok is False and observation.error is not None, case
+    assert observation.model_dump()["error"] == {"code": "INVALID_ACTION"}, case
+    assert (reward, terminated, truncated) == (-1.0, True, False), case
+    assert env.state.step_count == 1 and not env.state.submitted and env.state.terminated
+    assert info == {"max_steps": MAX_STEPS, "version": ENV_VERSION}
+    entry = env.evaluator_journal[-1]
+    assert (entry.event, entry.step, entry.code) == ("invalid_submission", 1, "INVALID_ACTION")
+    assert entry.reason and all(isinstance(kind, str) for kind in entry.reason)
+    # the journal is evaluator-side: no observation or info carries it
+    blob = observation.model_dump_json() + json.dumps(info)
+    assert "invalid_submission" not in blob and entry.reason[0] not in blob
+    after, _, terminated_after, _, _ = env.step(LIST_LEDGER_1)
+    assert after.error is not None and after.error.code == "EPISODE_OVER" and terminated_after
+
+
+def test_refused_submission_boundaries() -> None:
+    """What does NOT end the episode: a wrong episode_id (binding) and a junk envelope (C13).
+
+    A structurally valid finding with wrong values is scored as a false positive, so the episode
+    ends the ordinary way, through the submit itself.
+    """
+    env = _env()
+    wrong_episode, reward, terminated, _, _ = env.step(
+        {"tool": "submit", "args": {"episode_id": "ep_ffffffffffff", "findings": []}}
+    )
+    assert wrong_episode.error is not None and wrong_episode.error.code == "INVALID_SUBMISSION"
+    assert (reward, terminated) == (0.0, False) and not env.state.terminated
+    envelopes: list[object] = [
+        {"tool": "shell", "args": {}},  # unknown action name (jury C13)
+        {"tool": "submit"},  # no args: the action contract rejects the envelope, not the payload
+        {"tool": "submit", "args": None},
+        {"tool": "submit", "args": {"episode_id": env.episode.manifest.episode_id, "findings": []},
+         "thought": "x" * 600},  # our own scratchpad field, not part of findings.json
+    ]  # fmt: skip
+    for envelope in envelopes:
+        junk, reward, terminated, _, _ = env.step(envelope)
+        assert junk.error is not None and junk.error.code == "INVALID_ACTION", envelope
+        assert (reward, terminated) == (0.0, False), envelope
+    assert env.evaluator_journal == () and not env.state.terminated
+    accepted, reward, terminated, _, _ = _submit_findings(env, [_finding(type="made_up")])
+    assert accepted.ok and terminated is True  # a wrong value is a false positive, not a crash
+    assert reward == official_reward(0.0, env.state.step_count - 1) == -1.0 and env.state.submitted
+
+
+def test_structurally_invalid_submit_as_action_100_terminates() -> None:
+    """At the step limit the refusal still terminates (it never becomes a truncation)."""
+    env = _env(seed=7)
+    for _ in range(MAX_STEPS - 1):
+        env.step(LIST_LEDGER_1)
+    observation, reward, terminated, truncated, _ = _submit_findings(env, [_finding()] * 31)
+    assert observation.error is not None and (reward, terminated, truncated) == (-1.0, True, False)
+    assert env.state.step_count == MAX_STEPS and not env.state.truncated
+    assert len(env.evaluator_journal) == 1 and env.evaluator_journal[0].step == MAX_STEPS

@@ -7,10 +7,15 @@ import math
 import pytest
 
 from fintrace.evaluator.metrics import compute_metrics
+from fintrace.reward.official import official_reward
 
 
-def test_metrics_empty_empty_is_one() -> None:
-    assert compute_metrics(0, 0, 0) == (1.0, 1.0, 1.0)
+def test_metrics_empty_empty_is_precision_recall_zero_f1_one() -> None:
+    """Jury Block 3 test 3: nothing to find and nothing claimed is P = R = 0 with F1 = 1."""
+    assert compute_metrics(0, 0, 0) == (0.0, 0.0, 1.0)
+    # the reward reads F1 only, so silence on clean books is still a perfect audit
+    assert official_reward(compute_metrics(0, 0, 0)[2], 10) == pytest.approx(0.98, abs=1e-9)
+    assert official_reward(compute_metrics(0, 0, 0)[2], 0) == 1.0
 
 
 def test_metrics_false_positives_only() -> None:

@@ -23,10 +23,16 @@ def advance(state: EpisodeState) -> None:
     state.step_count += 1
 
 
-def finish(state: EpisodeState, *, submitted: bool, truncated: bool) -> None:
-    """Close the episode: a successful submit terminates it, the step budget truncates it."""
+def finish(
+    state: EpisodeState, *, submitted: bool, truncated: bool, terminated: bool | None = None
+) -> None:
+    """Close the episode: a successful submit terminates it, the step budget truncates it.
+
+    ``terminated`` defaults to ``submitted``. Pass it explicitly for a submission the environment
+    refused: that ends the episode (jury Block 3, tests 18-20) without recording a submission.
+    """
     state.submitted = submitted
-    state.terminated = submitted
+    state.terminated = submitted if terminated is None else terminated
     state.truncated = truncated
 
 

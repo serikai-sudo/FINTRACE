@@ -8,7 +8,8 @@ from types import ModuleType
 
 import pytest
 
-from fintrace.evaluator.runner import BASELINE_FACTORIES, summarize
+from fintrace.evaluator.runner import BASELINE_FACTORIES, load_split_config, summarize
+from fintrace.generator.build import build_episode
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DEV = REPO_ROOT / "docs" / "results_dev.md"
@@ -76,3 +77,40 @@ def test_baselines_dev_split_and_results_md(
     assert "rule_based" in stdout and "F1=" in stdout and "wrote" in stdout
     written = out.read_text(encoding="utf-8")
     assert written.count("| 10000 | ep_") == 3 and script.TIMING_MARKER in written
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        {"episode_id": "ep_0123456789ab", "findings": [], "unexpected": 1},  # extra field
+        {"findings": []},  # missing episode_id
+        {"episode_id": "ep_0123456789ab"},  # missing findings
+        {},
+        {"episode_id": "ep_0123456789ab", "findings": "nope"},  # wrong JSON type
+        "not-a-dict",
+    ],
+)
+def test_score_episode_handles_a_refused_submission(args: object) -> None:
+    """A trace that ends on a refused submit scores as -1 with no finding, never a crash.
+
+    The environment ends such an episode at -1 (jury Block 3, tests 18-20); the baseline scorer
+    has to report the same number instead of validating a payload the environment already refused.
+    """
+    script = _load_script()
+    private = build_episode(10000, load_split_config("dev"))
+    result = {
+        "policy": "probe",
+        "seed": 10000,
+        "episode_id": private.truth.episode_id,
+        "steps": 3,
+        "reward": -1.0,
+        "terminated": True,
+        "truncated": False,
+    }
+    actions = [
+        {"tool": "list_records", "args": {"table": "ledger"}},
+        {"tool": "submit", "args": args},
+    ]
+    score = script.score_episode(result, actions, private)
+    assert (score["tp"], score["fp"], score["fn"]) == (0, 0, len(private.truth.issues))
+    assert score["return"] == -1.0 and score["n_findings"] == 0 and score["submitted"] is False

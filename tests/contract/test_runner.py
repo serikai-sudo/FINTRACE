@@ -28,7 +28,9 @@ FORBIDDEN_PACKAGES = ("evaluator", "reward", "environment", "generator")
 # escape hatches an agent could use instead of a plain import statement
 FORBIDDEN_STDLIB = ("importlib", "sys", "os", "pathlib", "io", "shutil", "subprocess")
 FORBIDDEN_NAMES = ("__import__", "import_module", "open", "DATA_DIR", "CONFIG_DIR")
-FORBIDDEN_ATTRIBUTES = ("read_text", "read_bytes", "_private", "_truth_store")
+FORBIDDEN_ATTRIBUTES = (
+    "read_text", "read_bytes", "_private", "_truth_store", "_journal", "evaluator_journal",
+)  # fmt: skip
 RESULT_KEYS = {
     "policy", "seed", "episode_id", "steps", "reward", "terminated", "truncated", "n_findings",
     "elapsed_sec",

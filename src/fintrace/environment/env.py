@@ -15,23 +15,29 @@ import time
 from collections.abc import Sequence
 from typing import ClassVar, Final
 
+from pydantic import ValidationError
+
 from fintrace.constants import (
     ENV_VERSION,
     MAX_PAGE_SIZE,
     MAX_STEPS,
+    REWARD_CLIP_MIN,
     REWARD_INTERMEDIATE,
     TIME_BUDGET_SECONDS,
     TOOL_NAMES,
 )
 from fintrace.evaluator.matcher import match, public_ids_of
 from fintrace.evaluator.metrics import compute_metrics
-from fintrace.evaluator.truth_store import TruthStore
+from fintrace.evaluator.truth_store import EvaluatorJournal, TruthStore
 from fintrace.generator.build import build_episode
 from fintrace.logging.trajectory import TrajectoryLogger
 from fintrace.models import (
+    Action,
     EpisodeConfig,
     EpisodeState,
+    ErrorCode,
     Finding,
+    JournalEntry,
     JsonObject,
     PrivateEpisode,
     PublicEpisode,
@@ -64,6 +70,39 @@ def _tool_of(action: object) -> ToolName:
     return _NEUTRAL_TOOL
 
 
+def _is_refused_submission(action: object, code: ErrorCode) -> bool:
+    """True when a well-formed ``submit`` envelope carries a payload the schema refused.
+
+    Jury Block 3 (tests 18-20) and case section 05: a structurally invalid submission ends the
+    episode with -1. Two neighbours stay outside that rule: a submission that only names another
+    episode is a binding error (``INVALID_SUBMISSION``, see ``tools/submit.py``), and an envelope
+    the action contract itself rejects (no ``args``, a non-object ``args``, an over-long
+    ``thought``) is an ordinary malformed action (jury C13). Both cost a step and leave the
+    episode open.
+    """
+    if code == "INVALID_SUBMISSION":
+        return False
+    try:
+        envelope = Action.model_validate(action)
+    except ValidationError:
+        return False
+    return envelope.tool == "submit"
+
+
+def _submission_error_types(action: object) -> tuple[str, ...]:
+    """Why the submission was refused, as pydantic error types of the agent's own payload.
+
+    Evaluator-side detail only: it repeats the validation the parser already failed and never
+    looks at the truth. ``("envelope",)`` means the action envelope itself was malformed.
+    """
+    args = action.get("args") if isinstance(action, dict) else None
+    try:
+        Submission.model_validate(args)
+    except ValidationError as exc:
+        return tuple(sorted({str(error["type"]) for error in exc.errors()}))
+    return ("envelope",)
+
+
 class FintraceEnv:
     """Single-episode environment; call ``reset`` before ``step``. Not a gym.Env on purpose."""
 
@@ -77,6 +116,7 @@ class FintraceEnv:
         self._public_ids: frozenset[str] = frozenset()  # ids the matcher may accept as evidence
         self._state: EpisodeState | None = None
         self._truth_store = TruthStore()  # the only path from truth to the scorer
+        self._journal = EvaluatorJournal()  # evaluator-side record of refused submissions
         self._logger: TrajectoryLogger | None = None  # optional per-episode JSONL transcript
         # wall-clock safety deadline (time.monotonic); never part of the state or any output
         self._deadline: float | None = None
@@ -90,6 +130,11 @@ class FintraceEnv:
     def state(self) -> EpisodeState:
         """Step counters and end flags (raises if reset was never called)."""
         return self._require_reset()[1]
+
+    @property
+    def evaluator_journal(self) -> tuple[JournalEntry, ...]:
+        """Submissions this episode refused, for the harness; never part of any observation."""
+        return self._journal.entries()
 
     def reset(
         self, seed: int, config: EpisodeConfig | None = None
@@ -124,6 +169,7 @@ class FintraceEnv:
         self._public_ids = public_ids_of(public)
         self._state = new_state(public.manifest.episode_id)
         self._truth_store.register(private.truth)
+        self._journal.clear()  # a journal belongs to one episode
         self._deadline = time.monotonic() + TIME_BUDGET_SECONDS
         return ResetObservation(
             result={
@@ -153,6 +199,20 @@ class FintraceEnv:
         parsed = parse_action(action)
         if isinstance(parsed, str):
             observation = build_error_result(_tool_of(action), parsed, "rejected action", state)
+            if _is_refused_submission(action, parsed):
+                # a submission the schema refuses ends the episode at -1 whatever the books hold
+                # (never the empty-submission reward, which is positive on clean books), and the
+                # evaluator keeps the reason; the agent still sees a code-only error
+                finish(state, submitted=False, truncated=False, terminated=True)
+                self._journal.record(
+                    JournalEntry(
+                        event="invalid_submission",
+                        step=state.step_count,
+                        code=parsed,
+                        reason=_submission_error_types(action),
+                    )
+                )
+                return self._emit(action, observation, REWARD_CLIP_MIN, state)
             truncated = self._truncate_if_exhausted(state)
             reward = self._truncation_reward() if truncated else REWARD_INTERMEDIATE
             return self._emit(action, observation, reward, state)

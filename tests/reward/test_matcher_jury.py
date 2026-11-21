@@ -232,3 +232,14 @@ def test_match_pairs_count_equals_match_on_random_graphs() -> None:
         for issue_id, index in pairs:
             needed = set(by_id[issue_id].acceptable_evidence_sets[0])
             assert needed <= set(findings[index].evidence_ids)
+
+
+def test_empty_truth_and_empty_findings_row_3() -> None:
+    """Jury Block 3 test 3: TP=FP=FN=0 reports P=R=0 with F1=1, and the reward stays 0.98."""
+    tp, fp, fn, reward = _score(())
+    assert (tp, fp, fn) == (0, 0, 0) and reward == pytest.approx(0.98, abs=1e-9)
+    precision, recall, f1 = compute_metrics(0, 0, 0)
+    assert (precision, recall, f1) == (0.0, 0.0, 1.0)
+    # row 4 for contrast: an empty truth with one finding is a false positive at -1
+    assert _score((), _f())[:3] == (0, 1, 0)
+    assert _score((), _f())[3] == -1.0

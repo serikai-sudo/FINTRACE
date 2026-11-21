@@ -48,6 +48,9 @@ _FIELD_ERROR_CODES: Final[dict[tuple[ToolName, str], ErrorCode]] = {
     ("get_record", "table"): "INVALID_TABLE",
     ("list_records", "cursor"): "INVALID_CURSOR",
     ("calculator", "expression"): "CALC_ERROR",
+    # a submission that only names the wrong episode is a binding error, not a broken payload:
+    # it keeps the episode open, while a structurally invalid submit ends it (env.step)
+    ("submit", "episode_id"): "INVALID_SUBMISSION",
 }
 _STRUCTURAL_ERRORS: Final[frozenset[str]] = frozenset({"extra_forbidden", "missing"})
 

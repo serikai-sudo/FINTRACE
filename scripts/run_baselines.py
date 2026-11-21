@@ -25,6 +25,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Final
 
+from pydantic import ValidationError
+
 from fintrace.agents.base import BASELINE_NAMES
 from fintrace.constants import DATA_DIR, ISSUE_TYPES, MAX_STEPS
 from fintrace.evaluator.matcher import match, public_ids_of
@@ -100,6 +102,41 @@ def _submitted_findings(actions: list[JsonObject], terminated: bool) -> list[Jso
     return list(findings) if isinstance(findings, list) else []
 
 
+def _submission_refused(actions: list[JsonObject], terminated: bool) -> bool:
+    """True when the episode ended because the environment refused the final submit.
+
+    The environment ends an episode at -1 when a well-formed submit carries a payload the schema
+    refuses (jury Block 3, tests 18-20). That is decided on the raw action the policy sent, not on
+    the two fields ``_submitted_findings`` keeps, so extra keys and missing fields are caught too.
+    """
+    if not terminated or not actions or actions[-1].get("tool") != "submit":
+        return False
+    args = actions[-1].get("args")
+    if not isinstance(args, dict):
+        return True
+    try:
+        Submission.model_validate(args)
+    except ValidationError:
+        return True
+    return False
+
+
+def _refused_submission_score(n_issues: int, reward: float) -> EpisodeScore:
+    """Score of an episode the environment ended because it refused the submission."""
+    return {
+        "tp": 0,
+        "fp": 0,
+        "fn": n_issues,
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "return": reward,
+        "n_findings": 0,
+        "submitted": False,
+        "per_type": {t: {"tp": 0, "fp": 0, "fn": 0, "total": 0} for t in ISSUE_TYPES},
+    }
+
+
 def score_episode(
     result: EpisodeResult, actions: list[JsonObject], private: PrivateEpisode
 ) -> EpisodeScore:
@@ -112,6 +149,10 @@ def score_episode(
             f"directory holds {private.truth.episode_id}"
         )
     terminated = bool(result["terminated"])
+    if _submission_refused(actions, terminated):
+        # the environment refused this submission and ended the episode at -1 (jury tests 18-20);
+        # no finding was scored, so every planted issue stays unfound
+        return _refused_submission_score(len(private.truth.issues), float(result["reward"]))
     submission = Submission.model_validate(
         {"episode_id": result["episode_id"], "findings": _submitted_findings(actions, terminated)}
     )
