@@ -33,6 +33,7 @@ from fintrace.models import (
     Truth,
 )
 
+from .audit import AuditError, verify_declared
 from .benford import derive_sub_rng
 from .company import DEFAULT_ROUNDING, generate_company
 from .fx import SUPPORTED_CURRENCIES, generate_all_fx_rates
@@ -428,11 +429,19 @@ def build_episode(seed: int, config: EpisodeConfig | None = None) -> PrivateEpis
     consistent (``validate_clean_history``) and be rediscoverable from public data alone
     (``independent_check``); otherwise it is retried on a fresh sub-RNG and finally raises
     ``InjectorError``. With all counts at zero the result is exactly ``build_clean_episode``.
+
+    Two gates then run on the finished books. ``audit.verify_declared`` compares the clean books
+    with the injected ones using its own arithmetic and no access to truth, and requires the
+    discrepancies the injections added to be exactly the issues truth declares -- so an issue
+    that did not land, one a later injection masked, and a discrepancy no injector recorded all
+    fail the build. Each injector's own ``independent_check`` then re-reads its issue as a
+    second, type-specific opinion.
     """
     config = config if config is not None else EpisodeConfig()
     private = build_clean_episode(seed, config)
     if config.errors.total() == 0:
         return private
+    baseline = private.public  # the clean books: whatever they already show is not an injection
     for kind in INJECTOR_ORDER:
         params: InjectorParams = getattr(config.errors, kind)
         for index in range(params.count):
@@ -440,8 +449,14 @@ def build_episode(seed: int, config: EpisodeConfig | None = None) -> PrivateEpis
     for name in _SCENARIO_FUNCS:
         for index in range(getattr(config.errors.interacting, name)):
             private = _inject_scenario_with_retries(private, seed, config, name, index)
-    # every issue must still be rediscoverable on the final books: a later injection is not
-    # allowed to mask an earlier one (eligibility rules prevent it; this makes it a contract)
+    # truth-blind gate: rescan both states and require the difference to be exactly what truth
+    # declares, in both directions (an injection that did not land or masked an earlier one, and
+    # a discrepancy no injector recorded, are equally fatal)
+    try:
+        verify_declared(baseline, private.public, private.truth)
+    except AuditError as exc:
+        raise InjectorError(f"the books and truth disagree on the final episode: {exc}") from exc
+    # second opinion: every issue must still be rediscoverable by the injector that created it
     for issue in private.truth.issues:
         try:
             _load_injector(issue.type).independent_check(private.public, issue)

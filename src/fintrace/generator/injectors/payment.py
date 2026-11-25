@@ -5,7 +5,8 @@
 (b) ``partial_allocation``: allocated_minor is cut by 10..50 %; the payment is under-allocated.
 (c) ``wrong_invoice_reference``: the allocation points at another same-currency invoice (issued
     no later than the payment, total at least the allocation, never a split-paid decoy) while
-    the ledger still books the cash against the right one.
+    the ledger still books the cash against the right one. A target that would move the
+    payment's FX policy date is refused: see ``_moves_fx_policy_date``.
 (d) ``transposition_typo``: two adjacent digits of allocated_minor are swapped (1450 -> 1540),
     the classical bookkeeper data-entry error that audit standards list among the misstatement
     patterns to consider (PCAOB AS 2110). The result may exceed or fall short of the amount.
@@ -26,6 +27,7 @@ import random
 from collections.abc import Callable
 from typing import Final, Literal
 
+from fintrace.generator.fx import build_fx_index, convert_minor, policy_date, rate_on
 from fintrace.generator.validate import ConsistencyError
 from fintrace.models import (
     InjectorParams,
@@ -46,6 +48,7 @@ from .base import (
     find_other_invoice_same_currency,
     pick_eligible_payment,
 )
+from .fx_error import noise_floor
 
 issue_type: Final[IssueType] = "payment_allocation"
 
@@ -187,6 +190,44 @@ def _inject_partial(episode: PrivateEpisode, rng: random.Random) -> Injected:
     return new_private, issue, entry
 
 
+def _moves_fx_policy_date(public: PublicEpisode, payment: Payment, target: Invoice) -> bool:
+    """True when re-pointing ``payment`` at ``target`` would also change its conversion.
+
+    Under ``rate_date_rule == "transaction_date"`` a foreign payment's base-currency journal is
+    keyed on its invoice's issue date, so another invoice can imply another rate. The journal
+    would then stop matching the policy and the misallocation would carry a second, undeclared
+    fx_error on the same records -- two issue types on one pair, with nothing in truth to match
+    the conversion gap. ``period.py`` refuses the mirror image of this for the same reason.
+
+    The bar is the fx injector's published ``noise_floor``, not any difference at all: below that
+    floor a conversion gap is rounding, no fx_error exists for anything to be left undeclared,
+    and refusing the draw would only move the RNG stream on to the next attempt and change
+    episodes that were already correct. Equal rates and sub-floor drift therefore keep the draw.
+    """
+    base = public.manifest.base_currency
+    if payment.currency == base or public.policy.fx.rate_date_rule != "transaction_date":
+        return False
+    current = _lookup_invoice(public, payment.invoice_refs[0].invoice_id)
+    index = build_fx_index(public.fx)
+    try:
+        rates = tuple(
+            rate_on(
+                index,
+                policy_date(public.policy, invoice.issued_at, payment.timestamp),
+                payment.currency,
+                base,
+                public.policy,
+            )
+            for invoice in (current, target)
+        )
+    except LookupError:
+        return True  # no policy rate for one of the two dates: the books become unexplainable
+    if rates[0] == rates[1]:
+        return False
+    booked, expected = (convert_minor(payment.amount_minor, rate, public.policy) for rate in rates)
+    return abs(booked - expected) >= noise_floor(expected)
+
+
 def _inject_wrong_ref(episode: PrivateEpisode, rng: random.Random) -> Injected:
     """Variant (c): redirect the allocation to another same-currency invoice."""
     payment = pick_eligible_payment(episode, rng, currency_match_count=2)
@@ -195,6 +236,8 @@ def _inject_wrong_ref(episode: PrivateEpisode, rng: random.Random) -> Injected:
     wrong = find_other_invoice_same_currency(
         episode, {correct.invoice_id}, payment.currency, rng, payment=payment
     )
+    if _moves_fx_policy_date(episode.public, payment, wrong):
+        raise InjectorError("redirecting this payment would also move its FX policy date")
     refs: Refs = (
         InvoiceAllocation(invoice_id=wrong.invoice_id, allocated_minor=ref.allocated_minor),
         *payment.invoice_refs[1:],

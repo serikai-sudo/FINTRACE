@@ -96,14 +96,19 @@ def _policy_rate(public: PublicEpisode, payment: Payment, invoice: Invoice) -> D
     return rate_on(build_fx_index(public.fx), day, payment.currency, base, public.policy)
 
 
-def _noise_floor(policy_base: int) -> int:
-    """max(100 minor units, 1 % of the correct base amount, rounded half-even)."""
+def noise_floor(policy_base: int) -> int:
+    """max(100 minor units, 1 % of the correct base amount, rounded half-even).
+
+    The published bar for calling a conversion gap an error rather than rounding. It is shared:
+    ``payment.py`` refuses a misallocation only when it would push a journal across this same
+    floor, so the generator never rejects a draw the audit would not have flagged either.
+    """
     scaled = (Decimal(policy_base) * NOISE_THRESHOLD_FRAC).quantize(_ONE, rounding=ROUND_HALF_EVEN)
     return max(NOISE_THRESHOLD_MIN_MINOR, int(scaled))
 
 
 def _passes_noise_floor(discrepancy: int, policy_base: int) -> bool:
-    return discrepancy >= _noise_floor(policy_base)
+    return discrepancy >= noise_floor(policy_base)
 
 
 def _rate_ratio_ok(wrong_rate: Decimal, policy_rate: Decimal) -> bool:
@@ -209,7 +214,7 @@ def _inject_variant(
         detail = {"factor": str(factor)}
     discrepancy = abs(wrong_base - policy_base)
     if not _passes_noise_floor(discrepancy, policy_base):
-        floor = _noise_floor(policy_base)
+        floor = noise_floor(policy_base)
         raise InjectorError(f"discrepancy {discrepancy} below the noise floor {floor}")
 
     new_private = _with_rows(episode, _rewrite_rows(rows, wrong_base))
@@ -314,4 +319,5 @@ __all__ = [
     "independent_check",
     "inject",
     "issue_type",
+    "noise_floor",
 ]

@@ -148,9 +148,10 @@ def test_perturbed_variant_factor_in_realistic_range(clean: PrivateEpisode) -> N
 
 
 def test_noise_threshold_rejects_small_discrepancy(clean: PrivateEpisode) -> None:
-    assert fx_error._noise_floor(1_000) == 100  # the 100-minor floor dominates
-    assert fx_error._noise_floor(50_000) == 500  # 1 % dominates
-    assert fx_error._noise_floor(12_345) == 123
+    # public, because payment.py's misallocation guard stands on this same floor
+    assert fx_error.noise_floor(1_000) == 100  # the 100-minor floor dominates
+    assert fx_error.noise_floor(50_000) == 500  # 1 % dominates
+    assert fx_error.noise_floor(12_345) == 123
     assert fx_error._passes_noise_floor(123, 12_345)
     assert not fx_error._passes_noise_floor(122, 12_345)
     tiny = (Decimal("1.001"),)  # 0.1 %: always inside rounding noise
